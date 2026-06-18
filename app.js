@@ -91,7 +91,8 @@ const xdfTasks = new Set([1, 3, 4]);
 let speakingMaterials = [];
 let state = loadState();
 let selectedTaskId = state.currentTask || 1;
-let localAudioUrl = null;
+let activeSentenceIndex = null;
+let sentenceMonitorTimer = null;
 
 const dom = {
   today: document.querySelector("#todayText"),
@@ -108,7 +109,7 @@ const dom = {
 init();
 
 async function init() {
-  const response = await fetch("./data/speaking.json");
+  const response = await fetch("./data/speaking.json?v=2");
   const data = await response.json();
   speakingMaterials = data.materials;
   ensureState();
@@ -124,6 +125,7 @@ function defaultState() {
     tasks: initialTasks(),
     records: {},
     completedEvents: [],
+    vocabularyBook: [],
   };
 }
 
@@ -145,6 +147,11 @@ function initialCycleRecord(cycleId) {
       correctAnswers: "",
       mainProblems: "",
       vocabulary: "",
+      vocabularyDraft: {
+        word: "",
+        meaning: "",
+        context: "",
+      },
     },
     speaking: {
       materialId: 1,
@@ -153,6 +160,7 @@ function initialCycleRecord(cycleId) {
       text: "",
       speed: "1",
       loop: false,
+      sentenceLoop: true,
       steps: Array(speakingSteps.length).fill(false),
       expressions: [blankExpression()],
       recitation: {
@@ -212,6 +220,7 @@ function saveState() {
 function ensureState() {
   if (!state.records || typeof state.records !== "object") state.records = {};
   if (!state.completedEvents || !Array.isArray(state.completedEvents)) state.completedEvents = [];
+  if (!state.vocabularyBook || !Array.isArray(state.vocabularyBook)) state.vocabularyBook = [];
   if (!state.tasks) state.tasks = initialTasks();
   if (!state.currentTask) state.currentTask = 1;
   if (!state.cycleId) state.cycleId = 1;
@@ -224,9 +233,14 @@ function ensureCycleRecord() {
     state.records[cycleKey] = initialCycleRecord(state.cycleId);
   }
   const record = state.records[cycleKey];
+  if (!record.listening) record.listening = initialCycleRecord(state.cycleId).listening;
+  if (!record.listening.vocabularyDraft) {
+    record.listening.vocabularyDraft = { word: "", meaning: "", context: "" };
+  }
   if (!record.speaking) record.speaking = initialCycleRecord(state.cycleId).speaking;
   if (!record.speaking.expressions?.length) record.speaking.expressions = [blankExpression()];
   if (!record.speaking.steps?.length) record.speaking.steps = Array(speakingSteps.length).fill(false);
+  if (typeof record.speaking.sentenceLoop !== "boolean") record.speaking.sentenceLoop = true;
   hydrateSpeakingDefaults(record.speaking);
   if (!record.writing) record.writing = initialCycleRecord(state.cycleId).writing;
   if (!record.writing.writingType) record.writing.writingType = recommendedWritingType(state.cycleId);
@@ -258,10 +272,13 @@ function findMaterial(id) {
 }
 
 function render() {
+  stopSentenceMonitor();
+  activeSentenceIndex = null;
   renderStatus();
   renderTasks();
   renderDetail();
   syncAudioSettings();
+  resizeTallTextareas();
 }
 
 function renderStatus() {
@@ -380,6 +397,7 @@ function renderXdfCallout() {
 
 function renderListening() {
   const rec = currentCycleRecord().listening;
+  const draft = rec.vocabularyDraft;
   return `
     <section class="section-block">
       <h3>学习步骤</h3>
@@ -400,9 +418,74 @@ function renderListening() {
         ${inputField("listening.totalQuestions", "题目总数", rec.totalQuestions, "number")}
         ${inputField("listening.correctAnswers", "正确题数", rec.correctAnswers, "number")}
         ${textareaField("listening.mainProblems", "本次主要问题", rec.mainProblems, false)}
-        ${textareaField("listening.vocabulary", "记录的生词 / 表达", rec.vocabulary, false)}
       </div>
     </section>
+    <section class="section-block">
+      <h3>记录听力生词</h3>
+      <p class="note vocabulary-note">每次只记录一个生词或短语。来源材料和 Section 会自动带入生词本。</p>
+      <form class="vocabulary-form" data-vocabulary-form>
+        <label class="field">
+          <span>生词 / 短语</span>
+          <input value="${escapeAttr(draft.word)}" data-vocabulary-draft="word" required />
+        </label>
+        <label class="field">
+          <span>中文释义</span>
+          <input value="${escapeAttr(draft.meaning)}" data-vocabulary-draft="meaning" required />
+        </label>
+        <label class="field vocabulary-context">
+          <span>原句 / 听力语境（选填）</span>
+          <textarea data-vocabulary-draft="context">${escapeHtml(draft.context)}</textarea>
+        </label>
+        <button class="solid-button vocabulary-add" type="submit">加入生词本</button>
+      </form>
+    </section>
+    <section class="section-block">
+      <div class="section-heading-row">
+        <div>
+          <h3>我的听力生词本</h3>
+          <p class="note">共 ${state.vocabularyBook.length} 条，按最新记录排序。</p>
+        </div>
+        <button class="quiet-button" type="button" data-export-vocabulary ${state.vocabularyBook.length ? "" : "disabled"}>下载 CSV</button>
+      </div>
+      ${renderVocabularyBook()}
+    </section>
+  `;
+}
+
+function renderVocabularyBook() {
+  if (!state.vocabularyBook.length) {
+    return `<p class="empty-state">还没有生词。完成上面的三个字段后，第一条记录就会出现在这里。</p>`;
+  }
+
+  return `
+    <div class="vocabulary-list">
+      ${[...state.vocabularyBook]
+        .reverse()
+        .map(
+          (item) => `
+            <article class="vocabulary-item">
+              <div class="vocabulary-word">
+                <strong>${escapeHtml(item.word)}</strong>
+                <span>${escapeHtml(item.meaning)}</span>
+              </div>
+              ${item.context ? `<p>${escapeHtml(item.context)}</p>` : ""}
+              <div class="vocabulary-meta">
+                <span>${escapeHtml(formatVocabularyDate(item.addedAt))}</span>
+                <span>${escapeHtml(item.materialName || "未填写材料")}</span>
+                <span>${escapeHtml(item.sectionType || "未填写 Section")}</span>
+              </div>
+              <button
+                class="icon-delete"
+                type="button"
+                data-remove-vocabulary="${escapeAttr(item.id)}"
+                aria-label="删除 ${escapeAttr(item.word)}"
+                title="删除这条生词"
+              >×</button>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -411,6 +494,7 @@ function renderSpeaking() {
   const material = findMaterial(rec.materialId) || speakingMaterials[0];
   const expressionList = material?.expressions || [];
   const replacements = material?.replacements || [];
+  const sentences = material?.sentences || [];
   return `
     <section class="section-block">
       <h3>口语材料</h3>
@@ -428,18 +512,15 @@ function renderSpeaking() {
         </label>
         ${inputField("speaking.customTopic", "自定义主题", rec.customTopic)}
         ${inputField("speaking.materialName", "材料名称", rec.materialName)}
-        <label class="field">
-          <span>上传本地 MP3</span>
-          <input type="file" accept="audio/mpeg,audio/mp3" data-local-audio />
-        </label>
       </div>
     </section>
 
     <section class="section-block">
       <h3>MP3 播放器</h3>
       <div class="audio-box">
-        <audio id="speakingAudio" controls preload="metadata" src="${escapeAttr(localAudioUrl || material?.audio || "")}"></audio>
+        <audio id="speakingAudio" controls preload="metadata" src="${escapeAttr(material?.audio || "")}"></audio>
         <div class="audio-tools">
+          <button class="quiet-button" type="button" data-play-full>播放整篇</button>
           <button class="quiet-button" type="button" data-audio-jump="-5">后退 5 秒</button>
           <button class="quiet-button" type="button" data-audio-jump="5">前进 5 秒</button>
           <label class="field">
@@ -452,19 +533,45 @@ function renderSpeaking() {
           </label>
           <label class="check-row">
             <input type="checkbox" data-audio-loop ${rec.loop ? "checked" : ""} />
-            <span>循环当前音频</span>
+            <span>整篇循环</span>
           </label>
         </div>
       </div>
     </section>
 
     <section class="section-block">
-      <h3>文本内容</h3>
-      <div class="form-grid">
-        <label class="field full">
-          <span>上传文本文件</span>
-          <input type="file" accept=".txt,text/plain" data-text-upload />
+      <div class="section-heading-row sentence-heading">
+        <div>
+          <h3>逐句精听与背诵</h3>
+          <p class="note" id="sentenceStatus">点击任意句子开始播放。</p>
+        </div>
+        <label class="check-row">
+          <input type="checkbox" data-sentence-loop ${rec.sentenceLoop ? "checked" : ""} />
+          <span>单句循环</span>
         </label>
+      </div>
+      <div class="sentence-navigation">
+        <button class="quiet-button" type="button" data-sentence-nav="-1">上一句</button>
+        <button class="quiet-button" type="button" data-sentence-nav="1">下一句</button>
+      </div>
+      <div class="sentence-list">
+        ${sentences
+          .map(
+            (sentence, index) => `
+              <button class="sentence-row" type="button" data-play-sentence="${index}" aria-pressed="false">
+                <span class="sentence-number">${String(index + 1).padStart(2, "0")}</span>
+                <span class="sentence-text">${escapeHtml(sentence.text)}</span>
+                <span class="sentence-action">播放</span>
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+    </section>
+
+    <section class="section-block">
+      <h3>完整文本</h3>
+      <div class="form-grid speaking-text-panel">
         ${textareaField("speaking.text", "口语答案文本", rec.text, true)}
       </div>
     </section>
@@ -708,7 +815,36 @@ document.addEventListener("click", (event) => {
 
   const jumpButton = event.target.closest("[data-audio-jump]");
   if (jumpButton) {
+    clearSentenceSelection();
     jumpAudio(Number(jumpButton.dataset.audioJump));
+    return;
+  }
+
+  if (event.target.closest("[data-play-full]")) {
+    playFullAudio();
+    return;
+  }
+
+  const sentenceButton = event.target.closest("[data-play-sentence]");
+  if (sentenceButton) {
+    playSentence(Number(sentenceButton.dataset.playSentence));
+    return;
+  }
+
+  const sentenceNav = event.target.closest("[data-sentence-nav]");
+  if (sentenceNav) {
+    navigateSentence(Number(sentenceNav.dataset.sentenceNav));
+    return;
+  }
+
+  const removeVocabulary = event.target.closest("[data-remove-vocabulary]");
+  if (removeVocabulary) {
+    removeVocabularyItem(removeVocabulary.dataset.removeVocabulary);
+    return;
+  }
+
+  if (event.target.closest("[data-export-vocabulary]")) {
+    exportVocabularyCsv();
     return;
   }
 
@@ -739,6 +875,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (handleVocabularyDraft(event.target)) return;
   if (handleStandardField(event.target)) return;
   if (handleExpressionField(event.target)) return;
 });
@@ -751,23 +888,40 @@ document.addEventListener("change", (event) => {
   if (handleSpeakingMaterial(event.target)) return;
   if (handleAudioSpeed(event.target)) return;
   if (handleAudioLoop(event.target)) return;
-  if (handleLocalAudio(event.target)) return;
-  if (handleTextUpload(event.target)) return;
+  if (handleSentenceLoop(event.target)) return;
+});
+
+document.addEventListener("submit", (event) => {
+  if (!event.target.matches("[data-vocabulary-form]")) return;
+  event.preventDefault();
+  addVocabularyItem();
 });
 
 dom.reset.addEventListener("click", () => {
-  const confirmed = window.confirm("确认清空本地学习进度？");
+  const confirmed = window.confirm("确认重置学习进度？已经积累的听力生词本会保留。");
   if (!confirmed) return;
-  state = defaultState();
+  const vocabularyBook = state.vocabularyBook;
+  state = { ...defaultState(), vocabularyBook };
   selectedTaskId = 1;
+  activeSentenceIndex = null;
   ensureState();
   saveState();
   render();
 });
 
+window.addEventListener("resize", resizeTallTextareas);
+
 function handleStandardField(target) {
   if (!target?.dataset?.field) return false;
   setPath(currentCycleRecord(), target.dataset.field, target.value);
+  if (target.matches("textarea.tall")) resizeTextarea(target);
+  saveState();
+  return true;
+}
+
+function handleVocabularyDraft(target) {
+  if (!target?.dataset || target.dataset.vocabularyDraft === undefined) return false;
+  currentCycleRecord().listening.vocabularyDraft[target.dataset.vocabularyDraft] = target.value;
   saveState();
   return true;
 }
@@ -814,8 +968,7 @@ function handleSpeakingMaterial(target) {
   speaking.text = material.passage;
   speaking.steps = Array(speakingSteps.length).fill(false);
   speaking.localAudioName = "";
-  if (localAudioUrl) URL.revokeObjectURL(localAudioUrl);
-  localAudioUrl = null;
+  activeSentenceIndex = null;
   saveState();
   render();
   return true;
@@ -837,31 +990,76 @@ function handleAudioLoop(target) {
   return true;
 }
 
-function handleLocalAudio(target) {
-  if (!target?.dataset || target.dataset.localAudio === undefined || !target.files?.[0]) return false;
-  if (localAudioUrl) URL.revokeObjectURL(localAudioUrl);
-  localAudioUrl = URL.createObjectURL(target.files[0]);
-  currentCycleRecord().speaking.localAudioName = target.files[0].name;
+function handleSentenceLoop(target) {
+  if (!target?.dataset || target.dataset.sentenceLoop === undefined) return false;
+  currentCycleRecord().speaking.sentenceLoop = target.checked;
   saveState();
-  const audio = document.querySelector("#speakingAudio");
-  if (audio) {
-    audio.src = localAudioUrl;
-    audio.load();
-    syncAudioSettings();
-  }
   return true;
 }
 
-function handleTextUpload(target) {
-  if (!target?.dataset || target.dataset.textUpload === undefined || !target.files?.[0]) return false;
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    currentCycleRecord().speaking.text = String(reader.result || "");
-    saveState();
-    render();
+function addVocabularyItem() {
+  const listening = currentCycleRecord().listening;
+  const draft = listening.vocabularyDraft;
+  const word = draft.word.trim();
+  const meaning = draft.meaning.trim();
+  if (!word || !meaning) return;
+
+  state.vocabularyBook.push({
+    id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    word,
+    meaning,
+    context: draft.context.trim(),
+    materialName: listening.materialName.trim(),
+    sectionType: listening.sectionType,
+    addedAt: new Date().toISOString(),
   });
-  reader.readAsText(target.files[0]);
-  return true;
+  listening.vocabularyDraft = { word: "", meaning: "", context: "" };
+  saveState();
+  render();
+}
+
+function removeVocabularyItem(id) {
+  const item = state.vocabularyBook.find((entry) => entry.id === id);
+  if (!item || !window.confirm(`确认删除生词“${item.word}”？`)) return;
+  state.vocabularyBook = state.vocabularyBook.filter((entry) => entry.id !== id);
+  saveState();
+  render();
+}
+
+function exportVocabularyCsv() {
+  if (!state.vocabularyBook.length) return;
+  const rows = [
+    ["日期", "生词/短语", "中文释义", "来源材料", "Section", "原句/语境"],
+    ...state.vocabularyBook.map((item) => [
+      formatVocabularyDate(item.addedAt),
+      item.word,
+      item.meaning,
+      item.materialName || "",
+      item.sectionType || "",
+      item.context || "",
+    ]),
+  ];
+  const csv = `\ufeff${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `雅思听力生词本-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function formatVocabularyDate(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 function syncAudioSettings() {
@@ -869,13 +1067,120 @@ function syncAudioSettings() {
   if (!audio) return;
   const speaking = currentCycleRecord().speaking;
   audio.playbackRate = Number(speaking.speed || 1);
-  audio.loop = Boolean(speaking.loop);
+  audio.loop = activeSentenceIndex === null && Boolean(speaking.loop);
+  if (!audio.dataset.sentenceMonitor) {
+    audio.dataset.sentenceMonitor = "true";
+    audio.addEventListener("timeupdate", monitorSentencePlayback);
+    audio.addEventListener("ended", monitorSentencePlayback);
+  }
+}
+
+function currentSentences() {
+  const material = findMaterial(currentCycleRecord().speaking.materialId) || speakingMaterials[0];
+  return material?.sentences || [];
+}
+
+function playSentence(index) {
+  const audio = document.querySelector("#speakingAudio");
+  const sentences = currentSentences();
+  const sentence = sentences[index];
+  if (!audio || !sentence) return;
+
+  activeSentenceIndex = index;
+  audio.loop = false;
+  audio.currentTime = Math.max(0, Number(sentence.start) - 0.04);
+  audio.playbackRate = Number(currentCycleRecord().speaking.speed || 1);
+  audio.play().catch(() => {});
+  startSentenceMonitor();
+  updateSentenceUi();
+}
+
+function navigateSentence(direction) {
+  const sentences = currentSentences();
+  if (!sentences.length) return;
+  const base = activeSentenceIndex === null ? (direction > 0 ? -1 : sentences.length) : activeSentenceIndex;
+  const next = Math.max(0, Math.min(sentences.length - 1, base + direction));
+  playSentence(next);
+}
+
+function playFullAudio() {
+  const audio = document.querySelector("#speakingAudio");
+  if (!audio) return;
+  activeSentenceIndex = null;
+  stopSentenceMonitor();
+  audio.currentTime = 0;
+  syncAudioSettings();
+  audio.play().catch(() => {});
+  updateSentenceUi();
+}
+
+function clearSentenceSelection() {
+  if (activeSentenceIndex === null) return;
+  activeSentenceIndex = null;
+  stopSentenceMonitor();
+  syncAudioSettings();
+  updateSentenceUi();
+}
+
+function monitorSentencePlayback() {
+  if (activeSentenceIndex === null) return;
+  const audio = document.querySelector("#speakingAudio");
+  const sentence = currentSentences()[activeSentenceIndex];
+  if (!audio || !sentence || audio.currentTime < Number(sentence.end) - 0.04) return;
+
+  if (currentCycleRecord().speaking.sentenceLoop) {
+    audio.currentTime = Math.max(0, Number(sentence.start) - 0.04);
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
+    audio.currentTime = Number(sentence.end);
+    stopSentenceMonitor();
+    updateSentenceUi(true);
+  }
+}
+
+function startSentenceMonitor() {
+  stopSentenceMonitor();
+  sentenceMonitorTimer = window.setInterval(monitorSentencePlayback, 40);
+}
+
+function stopSentenceMonitor() {
+  if (sentenceMonitorTimer === null) return;
+  window.clearInterval(sentenceMonitorTimer);
+  sentenceMonitorTimer = null;
+}
+
+function updateSentenceUi(finished = false) {
+  const sentences = currentSentences();
+  document.querySelectorAll("[data-play-sentence]").forEach((button) => {
+    const active = Number(button.dataset.playSentence) === activeSentenceIndex;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+    const action = button.querySelector(".sentence-action");
+    if (action) action.textContent = active ? (finished ? "已听" : "播放中") : "播放";
+  });
+  const status = document.querySelector("#sentenceStatus");
+  if (!status) return;
+  if (activeSentenceIndex === null) {
+    status.textContent = "当前为整篇播放，点击任意句子可切换为逐句模式。";
+  } else {
+    status.textContent = `第 ${activeSentenceIndex + 1} / ${sentences.length} 句${finished ? "播放完成" : "正在播放"}`;
+  }
 }
 
 function jumpAudio(seconds) {
   const audio = document.querySelector("#speakingAudio");
   if (!audio) return;
   audio.currentTime = Math.max(0, Math.min(audio.duration || Infinity, audio.currentTime + seconds));
+}
+
+function resizeTallTextareas() {
+  document.querySelectorAll("textarea.tall").forEach(resizeTextarea);
+}
+
+function resizeTextarea(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight + 2}px`;
 }
 
 function completeTask(taskId) {

@@ -33,7 +33,54 @@
         "tight deadlines → heavy workload / difficult assignments / exam pressure",
         "from the user's perspective → from the customer's perspective / from other people's perspective"
       ],
-      "wordCount": 133
+      "wordCount": 133,
+      "sentences": [
+        {
+          "text": "I currently work as a product manager.",
+          "start": 0.0,
+          "end": 2.55
+        },
+        {
+          "text": "My job mainly involves communicating with different teams, trying to understand users' needs, and finding ways to improve user experience.",
+          "start": 2.55,
+          "end": 11.65
+        },
+        {
+          "text": "What I like most about my work is that it allows me to solve real problems, which gives me a strong sense of achievement.",
+          "start": 11.65,
+          "end": 19.16
+        },
+        {
+          "text": "To be honest, my work can be quite demanding sometimes.",
+          "start": 19.16,
+          "end": 22.97
+        },
+        {
+          "text": "I often have to deal with tight deadlines, unexpected changes, and different opinions from different people.",
+          "start": 22.97,
+          "end": 30.46
+        },
+        {
+          "text": "However, these challenges have helped me become more patient and organized.",
+          "start": 30.46,
+          "end": 35.83
+        },
+        {
+          "text": "One important thing I've learned from my work is how to think from the user's perspective.",
+          "start": 35.83,
+          "end": 41.04
+        },
+        {
+          "text": "I believe a good product should make people's lives easier.",
+          "start": 41.04,
+          "end": 44.93
+        },
+        {
+          "text": "In the future, I hope to take on more responsibility and keep improving my communication and problem-solving skills.",
+          "start": 44.93,
+          "end": 52.74
+        }
+      ]
     },
     {
       "id": 2,
@@ -66,7 +113,59 @@
         "historical buildings → old streets / temples / museums",
         "cost of living → housing price / traffic pressure / population density"
       ],
-      "wordCount": 141
+      "wordCount": 141,
+      "sentences": [
+        {
+          "text": "I was born and raised in a city with a long history.",
+          "start": 0.0,
+          "end": 3.89
+        },
+        {
+          "text": "It has a rich cultural atmosphere, and at the same time, it is quite modern and convenient.",
+          "start": 3.89,
+          "end": 10.81
+        },
+        {
+          "text": "There is convenient public transport, many restaurants serving local food, and some famous historical buildings.",
+          "start": 10.81,
+          "end": 15.88
+        },
+        {
+          "text": "What I like most about my hometown is the sense of belonging it gives me.",
+          "start": 15.88,
+          "end": 23.51
+        },
+        {
+          "text": "I have many childhood memories there, so whenever I go back, I feel emotionally connected to the place.",
+          "start": 23.51,
+          "end": 30.65
+        },
+        {
+          "text": "It is familiar, warm, and meaningful to me.",
+          "start": 30.65,
+          "end": 34.44
+        },
+        {
+          "text": "Over the past few years, my hometown has changed a lot.",
+          "start": 34.44,
+          "end": 38.53
+        },
+        {
+          "text": "There are more tall buildings, more business areas, and more young people moving there for work.",
+          "start": 38.53,
+          "end": 44.55
+        },
+        {
+          "text": "Of course, the cost of living has also become higher.",
+          "start": 44.55,
+          "end": 48.09
+        },
+        {
+          "text": "Still, I think it is a great place to live because it is convenient, lively, and full of memories.",
+          "start": 48.09,
+          "end": 54.83
+        }
+      ]
     },
     {
       "id": 3,
@@ -99,7 +198,59 @@
         "convenient area → quiet area / central area / residential area",
         "more natural light → more space / better decoration / a larger kitchen"
       ],
-      "wordCount": 134
+      "wordCount": 134,
+      "sentences": [
+        {
+          "text": "I currently live in an apartment with my family.",
+          "start": 0.0,
+          "end": 3.03
+        },
+        {
+          "text": "It is not very big, but it is comfortable enough for our daily life.",
+          "start": 3.03,
+          "end": 7.58
+        },
+        {
+          "text": "The apartment is in a convenient area, and the nearby facilities are quite good.",
+          "start": 7.58,
+          "end": 12.87
+        },
+        {
+          "text": "For example, there are supermarkets and subway stations close to my home.",
+          "start": 12.87,
+          "end": 17.99
+        },
+        {
+          "text": "My favourite room is the living room.",
+          "start": 17.99,
+          "end": 20.31
+        },
+        {
+          "text": "I spend most of my time there reading, talking with my family, or just doing nothing.",
+          "start": 20.31,
+          "end": 26.06
+        },
+        {
+          "text": "I like its cozy atmosphere, especially in the evening, when I can relax after a long day.",
+          "start": 26.06,
+          "end": 32.57
+        },
+        {
+          "text": "I prefer a simple and practical home.",
+          "start": 32.57,
+          "end": 35.59
+        },
+        {
+          "text": "If I could change one thing, I would like to have more natural light and a bigger study room.",
+          "start": 35.59,
+          "end": 41.94
+        },
+        {
+          "text": "For me, home is a kind of personal space where I can feel safe and peaceful and recharge myself.",
+          "start": 41.94,
+          "end": 49.43
+        }
+      ]
     },
     {
       "id": 4,
@@ -132,7 +283,64 @@
         "emotional support → practical help / a sense of safety / encouragement",
         "different opinions → small conflicts / different habits / communication problems"
       ],
-      "wordCount": 124
+      "wordCount": 124,
+      "sentences": [
+        {
+          "text": "I have a small but close family.",
+          "start": 0.0,
+          "end": 3.03
+        },
+        {
+          "text": "We don't always express feelings directly, but we care about each other deeply.",
+          "start": 3.03,
+          "end": 7.95
+        },
+        {
+          "text": "My parents have a strong influence on me, especially in terms of family values.",
+          "start": 7.95,
+          "end": 13.49
+        },
+        {
+          "text": "They taught me to be responsible and independent.",
+          "start": 13.49,
+          "end": 16.99
+        },
+        {
+          "text": "I try to spend quality time with my family on weekends.",
+          "start": 16.99,
+          "end": 20.9
+        },
+        {
+          "text": "Sometimes we have dinner together, take a walk, or talk about ordinary things.",
+          "start": 20.9,
+          "end": 26.88
+        },
+        {
+          "text": "These simple moments give me a lot of emotional support.",
+          "start": 26.88,
+          "end": 31.54
+        },
+        {
+          "text": "Of course, family members may have different opinions sometimes.",
+          "start": 31.54,
+          "end": 35.69
+        },
+        {
+          "text": "I think the key is to be patient with each other, understand each other, and build trust slowly.",
+          "start": 35.69,
+          "end": 43.93
+        },
+        {
+          "text": "In my opinion, a healthy family relationship should make people feel accepted.",
+          "start": 43.93,
+          "end": 49.99
+        },
+        {
+          "text": "Family is also where people can experience unconditional love.",
+          "start": 49.99,
+          "end": 53.71
+        }
+      ]
     },
     {
       "id": 5,
@@ -165,7 +373,59 @@
         "difficult moments → work pressure / personal problems / emotional stress",
         "face-to-face communication → phone calls / online messages / video chats"
       ],
-      "wordCount": 119
+      "wordCount": 119,
+      "sentences": [
+        {
+          "text": "I have a few close friends rather than a large social circle.",
+          "start": 0.0,
+          "end": 5.06
+        },
+        {
+          "text": "For me, friendship is about building meaningful relationships with people who are trustworthy and supportive.",
+          "start": 5.06,
+          "end": 11.92
+        },
+        {
+          "text": "My best friend and I stay in touch regularly.",
+          "start": 11.92,
+          "end": 15.03
+        },
+        {
+          "text": "We share similar values and have some common interests, such as reading, work, and life planning.",
+          "start": 15.03,
+          "end": 22.52
+        },
+        {
+          "text": "He is a reliable friend.",
+          "start": 22.52,
+          "end": 24.91
+        },
+        {
+          "text": "When I go through difficult moments, he can listen patiently and give honest advice.",
+          "start": 24.91,
+          "end": 30.98
+        },
+        {
+          "text": "I believe friendship requires mutual respect.",
+          "start": 30.98,
+          "end": 34.27
+        },
+        {
+          "text": "Although online communication is convenient, face-to-face communication is still important because it makes the relationship feel warmer.",
+          "start": 34.27,
+          "end": 41.8
+        },
+        {
+          "text": "To keep a friendship alive, people need time, honesty, and patience.",
+          "start": 41.8,
+          "end": 45.74
+        },
+        {
+          "text": "A true friend is someone who can understand me without judging me.",
+          "start": 45.74,
+          "end": 51.62
+        }
+      ]
     },
     {
       "id": 6,
@@ -198,7 +458,54 @@
         "use my phone less → sleep earlier / exercise more / eat healthier food",
         "a sense of control → a sense of stability / a better mood / more energy"
       ],
-      "wordCount": 121
+      "wordCount": 121,
+      "sentences": [
+        {
+          "text": "My daily routine is quite regular.",
+          "start": 0.0,
+          "end": 2.55
+        },
+        {
+          "text": "I usually get up at around seven and start my day with a simple breakfast.",
+          "start": 2.55,
+          "end": 7.23
+        },
+        {
+          "text": "Before work, I often make a rough plan so that I know what I need to do.",
+          "start": 7.23,
+          "end": 13.56
+        },
+        {
+          "text": "During the day, I mainly deal with work tasks.",
+          "start": 13.56,
+          "end": 16.05
+        },
+        {
+          "text": "I try to manage my time well and stay focused, although it is not always easy.",
+          "start": 16.05,
+          "end": 22.88
+        },
+        {
+          "text": "In the evening, I usually wind down by reading, walking, or spending time with my family.",
+          "start": 22.88,
+          "end": 28.44
+        },
+        {
+          "text": "Recently, I've been trying to use my phone less and build healthier habits.",
+          "start": 28.44,
+          "end": 33.46
+        },
+        {
+          "text": "I think a good routine can help me avoid wasting time, stay productive, and feel more balanced.",
+          "start": 33.46,
+          "end": 40.0
+        },
+        {
+          "text": "More importantly, it gives me a sense of control over my life.",
+          "start": 40.0,
+          "end": 44.32
+        }
+      ]
     },
     {
       "id": 7,
@@ -231,7 +538,54 @@
         "home-cooked food → restaurant food / street food / school meals",
         "local speciality → traditional snack / famous dish / family recipe"
       ],
-      "wordCount": 139
+      "wordCount": 139,
+      "sentences": [
+        {
+          "text": "I am interested in food, and I enjoy trying different kinds of food.",
+          "start": 0.0,
+          "end": 5.41
+        },
+        {
+          "text": "I especially like spicy food because it usually has a rich flavour and makes me feel satisfied.",
+          "start": 5.41,
+          "end": 12.58
+        },
+        {
+          "text": "However, I try not to eat too much oily food, because these days I pay more attention to health.",
+          "start": 12.58,
+          "end": 19.49
+        },
+        {
+          "text": "On weekdays, I usually eat simple meals made with fresh ingredients.",
+          "start": 19.49,
+          "end": 24.61
+        },
+        {
+          "text": "I think home-cooked food is usually healthier, and it helps me maintain a balanced diet.",
+          "start": 24.61,
+          "end": 30.38
+        },
+        {
+          "text": "I also try to avoid overeating, although it is difficult when the food is really delicious.",
+          "start": 30.38,
+          "end": 36.93
+        },
+        {
+          "text": "For me, food is connected with memory and culture.",
+          "start": 36.93,
+          "end": 40.59
+        },
+        {
+          "text": "A local speciality can help me understand a place, and some dishes are like comfort food because they remind me of home.",
+          "start": 40.59,
+          "end": 48.32
+        },
+        {
+          "text": "I also believe food can bring people together, because people often have good conversations while eating.",
+          "start": 48.32,
+          "end": 54.76
+        }
+      ]
     },
     {
       "id": 8,
@@ -264,7 +618,59 @@
         "strength training → stretching / yoga / ball games",
         "sedentary lifestyle → unhealthy lifestyle / irregular routine / stressful life"
       ],
-      "wordCount": 116
+      "wordCount": 116,
+      "sentences": [
+        {
+          "text": "I think good health is one of the most important things in life.",
+          "start": 0.0,
+          "end": 5.54
+        },
+        {
+          "text": "I'm not a professional athlete, but I try to stay active, exercise regularly, and stay consistent.",
+          "start": 5.54,
+          "end": 10.14
+        },
+        {
+          "text": "My favourite form of exercise is jogging.",
+          "start": 10.14,
+          "end": 13.21
+        },
+        {
+          "text": "It is simple and convenient, and I can do it almost anywhere.",
+          "start": 13.21,
+          "end": 17.15
+        },
+        {
+          "text": "Jogging helps me reduce stress, stay energetic, and improve sleep quality.",
+          "start": 17.15,
+          "end": 22.54
+        },
+        {
+          "text": "I also believe exercise is good for mental health.",
+          "start": 22.54,
+          "end": 25.61
+        },
+        {
+          "text": "Besides jogging, I sometimes do some strength training to build up physical strength.",
+          "start": 25.61,
+          "end": 30.96
+        },
+        {
+          "text": "I think people should avoid a sedentary lifestyle, especially if they work in an office.",
+          "start": 30.96,
+          "end": 36.7
+        },
+        {
+          "text": "Recently, I've been trying to build a healthier lifestyle.",
+          "start": 36.7,
+          "end": 40.5
+        },
+        {
+          "text": "I believe small habits can make a big difference over time.",
+          "start": 40.5,
+          "end": 44.57
+        }
+      ]
     },
     {
       "id": 9,
@@ -297,7 +703,64 @@
         "information overload → screen addiction / privacy problems / fake news",
         "use technology wisely → control screen time / choose reliable information / stay focused"
       ],
-      "wordCount": 121
+      "wordCount": 121,
+      "sentences": [
+        {
+          "text": "Technology plays an important role in my daily life.",
+          "start": 0.0,
+          "end": 3.42
+        },
+        {
+          "text": "I rely on technology quite a lot, and I use many digital tools every day.",
+          "start": 3.42,
+          "end": 10.24
+        },
+        {
+          "text": "For example, I use my phone and computer to communicate with others, work, relax, and do online learning.",
+          "start": 10.24,
+          "end": 18.96
+        },
+        {
+          "text": "One technology I use a lot is artificial intelligence.",
+          "start": 18.96,
+          "end": 23.37
+        },
+        {
+          "text": "It helps me organize information, save time, and improve efficiency.",
+          "start": 23.37,
+          "end": 28.33
+        },
+        {
+          "text": "In many ways, technology can make life more convenient.",
+          "start": 28.33,
+          "end": 31.93
+        },
+        {
+          "text": "However, technology also has some problems.",
+          "start": 31.93,
+          "end": 34.59
+        },
+        {
+          "text": "We may face information overload, and digital devices can be distracting.",
+          "start": 34.59,
+          "end": 39.96
+        },
+        {
+          "text": "Many people spend too much time looking at screens.",
+          "start": 39.96,
+          "end": 43.37
+        },
+        {
+          "text": "So I think we should use technology wisely.",
+          "start": 43.37,
+          "end": 46.42
+        },
+        {
+          "text": "Technology should serve people and help us live better, rather than control our attention all the time.",
+          "start": 46.42,
+          "end": 53.64
+        }
+      ]
     },
     {
       "id": 10,
@@ -330,7 +793,64 @@
         "waste a lot of time → distract people / affect sleep / reduce concentration",
         "real-life communication → face-to-face talks / family time / outdoor activities"
       ],
-      "wordCount": 136
+      "wordCount": 136,
+      "sentences": [
+        {
+          "text": "I use the internet every day.",
+          "start": 0.0,
+          "end": 2.28
+        },
+        {
+          "text": "I usually use it to search for information, watch videos, learn new things, and keep in touch with friends.",
+          "start": 2.28,
+          "end": 9.39
+        },
+        {
+          "text": "Without the internet, my life would be much less convenient.",
+          "start": 9.39,
+          "end": 13.5
+        },
+        {
+          "text": "Social media has changed the way people communicate.",
+          "start": 13.5,
+          "end": 17.4
+        },
+        {
+          "text": "It allows people to share opinions and experiences with others.",
+          "start": 17.4,
+          "end": 21.68
+        },
+        {
+          "text": "It can also help people build an online community around shared interests, such as books, sports, or technology.",
+          "start": 21.68,
+          "end": 29.77
+        },
+        {
+          "text": "However, I think social media is a double-edged sword.",
+          "start": 29.77,
+          "end": 33.77
+        },
+        {
+          "text": "It is useful, but it can also waste a lot of time.",
+          "start": 33.77,
+          "end": 37.85
+        },
+        {
+          "text": "There is also a lot of unreliable information online, so we should be careful about what we read and share.",
+          "start": 37.85,
+          "end": 46.93
+        },
+        {
+          "text": "In my opinion, using the internet requires self-control.",
+          "start": 46.93,
+          "end": 49.87
+        },
+        {
+          "text": "I try to limit screen time and spend more time on real-life communication.",
+          "start": 49.87,
+          "end": 54.61
+        }
+      ]
     },
     {
       "id": 11,
@@ -363,7 +883,59 @@
         "practical and thought-provoking → relaxing and interesting / useful and inspiring",
         "reading → listening to audiobooks / taking online courses / writing notes"
       ],
-      "wordCount": 125
+      "wordCount": 125,
+      "sentences": [
+        {
+          "text": "I enjoy reading because it helps me think more deeply.",
+          "start": 0.0,
+          "end": 3.39
+        },
+        {
+          "text": "I don't read as much as I should, but I try to read regularly.",
+          "start": 3.39,
+          "end": 9.55
+        },
+        {
+          "text": "My favourite types of books are psychology,, history,, and philosophy books, because they help me understand myself better.",
+          "start": 9.55,
+          "end": 16.26
+        },
+        {
+          "text": "Reading gives me a chance to slow down.",
+          "start": 16.26,
+          "end": 19.1
+        },
+        {
+          "text": "These days, people spend a lot of time watching short videos, but books require more patience.",
+          "start": 19.1,
+          "end": 25.89
+        },
+        {
+          "text": "At the same time, they can give us deeper knowledge and meaningful ideas.",
+          "start": 25.89,
+          "end": 30.8
+        },
+        {
+          "text": "I usually read during quiet moments, especially before going to bed.",
+          "start": 30.8,
+          "end": 35.53
+        },
+        {
+          "text": "I prefer books that are practical and thought-provoking.",
+          "start": 35.53,
+          "end": 38.8
+        },
+        {
+          "text": "A good book can change the way I see the world and help me gain new perspectives.",
+          "start": 38.8,
+          "end": 44.02
+        },
+        {
+          "text": "I think reading is a lifelong habit worth developing.",
+          "start": 44.02,
+          "end": 47.74
+        }
+      ]
     },
     {
       "id": 12,
@@ -396,7 +968,54 @@
         "emotional depth → good acting / beautiful music / realistic details",
         "cinema → home theater / streaming platform / movie app"
       ],
-      "wordCount": 137
+      "wordCount": 137,
+      "sentences": [
+        {
+          "text": "I enjoy watching movies and TV shows in my free time because they help me relax after a busy day.",
+          "start": 0.0,
+          "end": 6.58
+        },
+        {
+          "text": "My favourite type is drama, because it often shows human relationships and personal growth.",
+          "start": 6.58,
+          "end": 12.54
+        },
+        {
+          "text": "I also like science fiction because it is imaginative.",
+          "start": 12.54,
+          "end": 16.34
+        },
+        {
+          "text": "In my opinion, a good movie should have an interesting story, believable characters, and emotional depth.",
+          "start": 16.34,
+          "end": 22.17
+        },
+        {
+          "text": "Some movies have a strong emotional impact, so they can make people think about life in a different way.",
+          "start": 22.17,
+          "end": 29.7
+        },
+        {
+          "text": "I don't like films that are too predictable, because they are less exciting.",
+          "start": 29.7,
+          "end": 34.32
+        },
+        {
+          "text": "A really good movie can stay in my mind for a long time.",
+          "start": 34.32,
+          "end": 38.05
+        },
+        {
+          "text": "I usually watch movies at home, but going to the cinema feels more immersive because of the big screen and sound effects.",
+          "start": 38.05,
+          "end": 45.13
+        },
+        {
+          "text": "I think movies are both entertainment and a form of art.",
+          "start": 45.13,
+          "end": 50.08
+        }
+      ]
     },
     {
       "id": 13,
@@ -429,7 +1048,54 @@
         "local culture → local history / local customs / local lifestyle",
         "slow travel → family travel / independent travel / budget travel"
       ],
-      "wordCount": 128
+      "wordCount": 128,
+      "sentences": [
+        {
+          "text": "I enjoy travelling because it allows me to experience a different lifestyle.",
+          "start": 0.0,
+          "end": 4.99
+        },
+        {
+          "text": "My favourite kind of trip is a relaxing trip with my family, because it gives us a chance to spend quality time together.",
+          "start": 4.99,
+          "end": 12.83
+        },
+        {
+          "text": "I prefer places with natural scenery and local culture.",
+          "start": 12.83,
+          "end": 17.24
+        },
+        {
+          "text": "I like to walk around a city, try local food, and observe how local people live.",
+          "start": 17.24,
+          "end": 24.0
+        },
+        {
+          "text": "For me, travel is not just about visiting famous tourist attractions.",
+          "start": 24.0,
+          "end": 29.51
+        },
+        {
+          "text": "It is also about learning to enjoy the journey and get away from daily stress.",
+          "start": 29.51,
+          "end": 34.49
+        },
+        {
+          "text": "Before travelling, I usually make a rough plan, but I don't like a tight schedule.",
+          "start": 34.49,
+          "end": 40.24
+        },
+        {
+          "text": "I prefer slow travel, because it makes me feel more relaxed.",
+          "start": 40.24,
+          "end": 44.49
+        },
+        {
+          "text": "In my opinion, travel can broaden our minds and help us understand different ways of life.",
+          "start": 44.49,
+          "end": 50.26
+        }
+      ]
     },
     {
       "id": 14,
@@ -462,7 +1128,54 @@
         "electronic products → headphones / computers / home appliances",
         "think twice → set a budget / compare different brands / avoid unnecessary purchases"
       ],
-      "wordCount": 117
+      "wordCount": 117,
+      "sentences": [
+        {
+          "text": "I usually shop online because it is convenient and time-saving.",
+          "start": 0.0,
+          "end": 4.46
+        },
+        {
+          "text": "I often buy daily necessities, books, and electronic products online.",
+          "start": 4.46,
+          "end": 9.52
+        },
+        {
+          "text": "Compared with physical stores, online shopping can offer more choices and sometimes better prices.",
+          "start": 9.52,
+          "end": 15.86
+        },
+        {
+          "text": "Before buying something, I usually compare prices and read reviews.",
+          "start": 15.86,
+          "end": 20.3
+        },
+        {
+          "text": "Reviews help me make better decisions, because I can learn from other people's experience.",
+          "start": 20.3,
+          "end": 25.89
+        },
+        {
+          "text": "I also care more about quality than brand, and I prefer products that are practical and durable.",
+          "start": 25.89,
+          "end": 32.22
+        },
+        {
+          "text": "However, online shopping may encourage people to buy things impulsively, especially when products are on sale.",
+          "start": 32.22,
+          "end": 39.54
+        },
+        {
+          "text": "So I try to think twice before making a purchase.",
+          "start": 39.54,
+          "end": 43.11
+        },
+        {
+          "text": "In my opinion, a good product should be useful, reliable, and good value for money.",
+          "start": 43.11,
+          "end": 49.03
+        }
+      ]
     },
     {
       "id": 15,
@@ -495,7 +1208,59 @@
         "outdoor activities → walking / jogging / cycling / travelling",
         "rainy days → snowy days / hot days / windy days"
       ],
-      "wordCount": 123
+      "wordCount": 123,
+      "sentences": [
+        {
+          "text": "My favourite season is autumn.",
+          "start": 0.0,
+          "end": 2.21
+        },
+        {
+          "text": "The weather is usually cool and comfortable, and I really enjoy this kind of mild weather.",
+          "start": 2.21,
+          "end": 7.92
+        },
+        {
+          "text": "I don't like weather that is extremely hot or cold.",
+          "start": 7.92,
+          "end": 11.43
+        },
+        {
+          "text": "In autumn, the fresh air makes outdoor activities more enjoyable.",
+          "start": 11.43,
+          "end": 15.97
+        },
+        {
+          "text": "Good weather can put me in a good mood, and sunny days often make me feel more energetic.",
+          "start": 15.97,
+          "end": 22.0
+        },
+        {
+          "text": "On the other hand, rainy days sometimes make me feel a bit lazy, especially when I have to go out.",
+          "start": 22.0,
+          "end": 28.88
+        },
+        {
+          "text": "I think weather can influence daily plans.",
+          "start": 28.88,
+          "end": 32.09
+        },
+        {
+          "text": "For example, people may change their travel plans because of heavy rain.",
+          "start": 32.09,
+          "end": 36.57
+        },
+        {
+          "text": "In recent years, the weather has become less predictable, probably because of climate change.",
+          "start": 36.57,
+          "end": 41.95
+        },
+        {
+          "text": "So I think people should pay more attention to environmental protection.",
+          "start": 41.95,
+          "end": 46.19
+        }
+      ]
     },
     {
       "id": 16,
@@ -528,7 +1293,59 @@
         "a good teacher → a good parent / a good coach / a good mentor",
         "online learning → classroom learning / group learning / one-on-one tutoring"
       ],
-      "wordCount": 123
+      "wordCount": 123,
+      "sentences": [
+        {
+          "text": "I think learning is a lifelong process.",
+          "start": 0.0,
+          "end": 2.53
+        },
+        {
+          "text": "School education is important because it gives people basic knowledge and social skills.",
+          "start": 2.53,
+          "end": 8.38
+        },
+        {
+          "text": "At the same time, self-learning is also necessary, especially in modern society, where things change very quickly.",
+          "start": 8.38,
+          "end": 15.91
+        },
+        {
+          "text": "In my opinion, a good teacher can make a subject more interesting.",
+          "start": 15.91,
+          "end": 21.62
+        },
+        {
+          "text": "I learn better when I understand the purpose of learning and can connect knowledge with real life.",
+          "start": 21.62,
+          "end": 30.27
+        },
+        {
+          "text": "Memorization is useful sometimes, but real understanding is more important.",
+          "start": 30.27,
+          "end": 33.86
+        },
+        {
+          "text": "These days, online learning has become popular.",
+          "start": 33.86,
+          "end": 36.32
+        },
+        {
+          "text": "It gives people more flexibility, because they can learn anytime and anywhere.",
+          "start": 36.32,
+          "end": 43.05
+        },
+        {
+          "text": "However, it also requires self-discipline.",
+          "start": 43.05,
+          "end": 45.51
+        },
+        {
+          "text": "I believe the most important ability is learning how to learn, because this ability can help people keep growing throughout life.",
+          "start": 45.51,
+          "end": 54.86
+        }
+      ]
     },
     {
       "id": 17,
@@ -561,7 +1378,54 @@
         "take public transport → walk more / cycle more / drive less",
         "companies → schools / communities / families"
       ],
-      "wordCount": 115
+      "wordCount": 115,
+      "sentences": [
+        {
+          "text": "I think environmental protection is very important because it is closely connected with our health and future.",
+          "start": 0.0,
+          "end": 7.07
+        },
+        {
+          "text": "In many cities, air pollution, plastic waste, and traffic-related pollution have become serious problems.",
+          "start": 7.07,
+          "end": 14.13
+        },
+        {
+          "text": "People's daily choices can have an impact on the environment.",
+          "start": 14.13,
+          "end": 19.17
+        },
+        {
+          "text": "For example, we can use less plastic, save electricity, recycle more, and take public transport instead of driving alone.",
+          "start": 19.17,
+          "end": 27.71
+        },
+        {
+          "text": "These actions may look small, but they still matter.",
+          "start": 27.71,
+          "end": 31.8
+        },
+        {
+          "text": "Of course, individuals cannot solve all environmental problems alone.",
+          "start": 31.8,
+          "end": 35.82
+        },
+        {
+          "text": "Governments should make stricter rules to reduce pollution, and companies should take more social responsibility.",
+          "start": 35.82,
+          "end": 42.61
+        },
+        {
+          "text": "At the same time, ordinary people should build a more sustainable lifestyle.",
+          "start": 42.61,
+          "end": 48.15
+        },
+        {
+          "text": "Protecting the environment means helping to protect our future.",
+          "start": 48.15,
+          "end": 52.24
+        }
+      ]
     },
     {
       "id": 18,
@@ -594,7 +1458,64 @@
         "maintain a healthy lifestyle → build a better routine / develop better habits",
         "make steady progress → keep learning / take small actions / stay consistent"
       ],
-      "wordCount": 118
+      "wordCount": 118,
+      "sentences": [
+        {
+          "text": "I have several goals for the future.",
+          "start": 0.0,
+          "end": 2.59
+        },
+        {
+          "text": "One of my main goals is to improve my English, especially my speaking ability.",
+          "start": 2.59,
+          "end": 7.96
+        },
+        {
+          "text": "I want to become more confident when speaking English, because it may give me more opportunities in work and life.",
+          "start": 7.96,
+          "end": 15.15
+        },
+        {
+          "text": "Another important goal is to maintain a healthy lifestyle.",
+          "start": 15.15,
+          "end": 19.63
+        },
+        {
+          "text": "As I get older, I realize that health is the foundation of everything.",
+          "start": 19.63,
+          "end": 27.02
+        },
+        {
+          "text": "I want to exercise more regularly, eat better, and sleep earlier.",
+          "start": 27.02,
+          "end": 32.22
+        },
+        {
+          "text": "These goals sound simple, but they require discipline and patience.",
+          "start": 32.22,
+          "end": 36.8
+        },
+        {
+          "text": "In my opinion, long-term goals should be realistic and meaningful.",
+          "start": 36.8,
+          "end": 40.65
+        },
+        {
+          "text": "It is important to break big goals into small steps.",
+          "start": 40.65,
+          "end": 45.25
+        },
+        {
+          "text": "I don't want to rush.",
+          "start": 45.25,
+          "end": 47.03
+        },
+        {
+          "text": "I prefer to make steady progress every day.",
+          "start": 47.03,
+          "end": 50.54
+        }
+      ]
     }
   ]
 }
