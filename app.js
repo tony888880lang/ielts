@@ -2,6 +2,7 @@ import { createCloudClient } from "./cloud.js";
 
 const XDF_URL = "https://ieltscat.xdf.cn/";
 const STORAGE_KEY = "ielts-study-panel-state-v1";
+const SHARED_STATE_ID = "primary";
 
 const taskDefs = [
   {
@@ -91,12 +92,12 @@ const task2Checks = [
 const xdfTasks = new Set([1, 3, 4]);
 
 let speakingMaterials = [];
+let hasLocalState = localStorage.getItem(STORAGE_KEY) !== null;
 let state = loadState();
 let selectedTaskId = state.currentTask || 1;
 let activeSentenceIndex = null;
 let sentenceMonitorTimer = null;
 let cloudClient = null;
-let cloudUser = null;
 let cloudReady = false;
 let cloudHydrating = false;
 let cloudSaveTimer = null;
@@ -124,7 +125,7 @@ async function init() {
   const data = await response.json();
   speakingMaterials = data.materials;
   ensureState();
-  saveLocalState();
+  saveLocalState(false);
   render();
   void initCloudSync();
 }
@@ -232,45 +233,22 @@ function saveState() {
   scheduleCloudSave();
 }
 
-function saveLocalState() {
+function saveLocalState(markAsExisting = true) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (markAsExisting) hasLocalState = true;
 }
 
 async function initCloudSync() {
   try {
     cloudClient = await createCloudClient();
-    const { data, error } = await cloudClient.auth.getSession();
-    if (error) throw error;
-    cloudUser = data.session?.user || null;
-
-    cloudClient.auth.onAuthStateChange((event, session) => {
-      if (event === "INITIAL_SESSION") return;
-      const nextUser = session?.user || null;
-      const changedUser = nextUser?.id !== cloudUser?.id;
-      cloudUser = nextUser;
-      if (!cloudUser) {
-        cloudReady = false;
-        cloudStatus = "local";
-        cloudMessage = "";
-        renderCloudPanel();
-      } else if (changedUser || !cloudReady) {
-        window.setTimeout(() => void syncFromCloud(), 0);
-      }
-    });
-
-    if (cloudUser) {
-      await syncFromCloud();
-    } else {
-      cloudStatus = "local";
-      renderCloudPanel();
-    }
+    await syncFromCloud();
   } catch (error) {
     markCloudError(error);
   }
 }
 
 async function syncFromCloud() {
-  if (!cloudClient || !cloudUser || cloudHydrating) return;
+  if (!cloudClient || cloudHydrating) return;
   cloudHydrating = true;
   cloudReady = false;
   cloudStatus = "connecting";
@@ -279,13 +257,13 @@ async function syncFromCloud() {
 
   try {
     const { data, error } = await cloudClient
-      .from("ielts_user_state")
+      .from("ielts_shared_state")
       .select("state, updated_at")
-      .eq("user_id", cloudUser.id)
+      .eq("id", SHARED_STATE_ID)
       .maybeSingle();
     if (error) throw error;
 
-    if (!data?.state) {
+    if (!data?.state || Object.keys(data.state).length === 0) {
       cloudReady = true;
       cloudHydrating = false;
       await pushCloudState();
@@ -295,7 +273,7 @@ async function syncFromCloud() {
     const remoteState = { ...defaultState(), ...data.state };
     const localTime = stateTime(state.updatedAt);
     const remoteTime = stateTime(remoteState.updatedAt || data.updated_at);
-    const preferRemote = remoteTime > localTime;
+    const preferRemote = !hasLocalState || remoteTime > localTime;
     const mergedVocabulary = mergeVocabularyBooks(state.vocabularyBook, remoteState.vocabularyBook);
     const remoteVocabularyCount = Array.isArray(remoteState.vocabularyBook)
       ? remoteState.vocabularyBook.length
@@ -330,7 +308,7 @@ async function syncFromCloud() {
 }
 
 function scheduleCloudSave() {
-  if (!cloudClient || !cloudUser || !cloudReady || cloudHydrating) return;
+  if (!cloudClient || !cloudReady || cloudHydrating) return;
   if (cloudSaveTimer !== null) window.clearTimeout(cloudSaveTimer);
   cloudStatus = "saving";
   cloudMessage = "";
@@ -342,20 +320,20 @@ function scheduleCloudSave() {
 }
 
 async function pushCloudState() {
-  if (!cloudClient || !cloudUser) return;
+  if (!cloudClient) return;
   cloudStatus = "saving";
   cloudMessage = "";
   renderCloudPanel();
 
   try {
     const savedAt = new Date().toISOString();
-    const { error } = await cloudClient.from("ielts_user_state").upsert(
+    const { error } = await cloudClient.from("ielts_shared_state").upsert(
       {
-        user_id: cloudUser.id,
+        id: SHARED_STATE_ID,
         state: JSON.parse(JSON.stringify(state)),
         updated_at: savedAt,
       },
-      { onConflict: "user_id" },
+      { onConflict: "id" },
     );
     if (error) throw error;
     cloudReady = true;
@@ -366,42 +344,6 @@ async function pushCloudState() {
   } catch (error) {
     markCloudError(error);
   }
-}
-
-async function sendMagicLink(email) {
-  if (!cloudClient || !email) return;
-  cloudStatus = "connecting";
-  cloudMessage = "正在发送登录邮件。";
-  renderCloudPanel();
-  try {
-    const { error } = await cloudClient.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        shouldCreateUser: true,
-      },
-    });
-    if (error) throw error;
-    cloudStatus = "email_sent";
-    cloudMessage = `登录链接已发送至 ${email}，请在邮箱中打开。`;
-    renderCloudPanel();
-  } catch (error) {
-    markCloudError(error);
-  }
-}
-
-async function signOutCloud() {
-  if (!cloudClient) return;
-  const { error } = await cloudClient.auth.signOut();
-  if (error) {
-    markCloudError(error);
-    return;
-  }
-  cloudUser = null;
-  cloudReady = false;
-  cloudStatus = "local";
-  cloudMessage = "已退出云同步，本机记录仍然保留。";
-  renderCloudPanel();
 }
 
 function mergeVocabularyBooks(localBook, remoteBook) {
@@ -420,7 +362,7 @@ function stateTime(value) {
 
 function markCloudError(error) {
   console.error("Cloud sync error", error);
-  cloudReady = Boolean(cloudUser);
+  cloudReady = Boolean(cloudClient);
   cloudStatus = "error";
   cloudMessage = "云端同步暂时失败，本机副本已经保存，可以稍后重试。";
   renderCloudPanel();
@@ -430,8 +372,6 @@ function renderCloudPanel() {
   if (!dom.cloud) return;
   const labels = {
     connecting: "正在连接云端",
-    local: "云同步未登录",
-    email_sent: "登录邮件已发送",
     saving: "正在保存到云端",
     synced: "云端已同步",
     error: "云端暂时不可用",
@@ -443,47 +383,20 @@ function renderCloudPanel() {
       : cloudStatus === "error"
         ? "error"
         : "local";
-
-  if (cloudUser) {
-    const syncedText = cloudLastSynced
-      ? `最近同步 ${cloudLastSynced.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`
-      : "学习记录与生词本将自动保存";
-    dom.cloud.innerHTML = `
-      <div class="cloud-layout">
-        <div class="cloud-copy">
-          <p class="cloud-title"><span class="sync-dot ${statusClass}"></span>${escapeHtml(labels[cloudStatus] || labels.synced)}</p>
-          <p>${escapeHtml(cloudStatus === "synced" ? syncedText : cloudMessage || syncedText)}</p>
-        </div>
-        <div class="cloud-actions">
-          <div class="cloud-account">
-            <strong>${escapeHtml(cloudUser.email || "已登录")}</strong>
-            <p>Supabase 私有账户</p>
-          </div>
-          <button class="quiet-button" type="button" data-cloud-sync>立即同步</button>
-          <button class="ghost-button" type="button" data-cloud-signout>退出</button>
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  const canLogin = Boolean(cloudClient);
+  const syncedText = cloudLastSynced
+    ? `最近同步 ${cloudLastSynced.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`
+    : "学习记录与生词本会自动跨设备保存";
   dom.cloud.innerHTML = `
     <div class="cloud-layout">
       <div class="cloud-copy">
-        <p class="cloud-title"><span class="sync-dot ${statusClass}"></span>${escapeHtml(labels[cloudStatus] || labels.local)}</p>
-        <p>${escapeHtml(cloudMessage || (canLogin ? "登录后，学习记录和生词本会自动跨设备同步。" : "正在加载云同步服务。"))}</p>
+        <p class="cloud-title"><span class="sync-dot ${statusClass}"></span>${escapeHtml(labels[cloudStatus] || labels.connecting)}</p>
+        <p>${escapeHtml(cloudStatus === "synced" ? syncedText : cloudMessage || syncedText)}</p>
       </div>
-      ${
-        canLogin
-          ? `<form class="cloud-auth-form" data-cloud-auth-form>
-              <input type="email" name="email" autocomplete="email" placeholder="你的邮箱" aria-label="云同步邮箱" required />
-              <button class="solid-button" type="submit">发送登录链接</button>
-            </form>`
-          : ""
-      }
+      <div class="cloud-actions">
+        <span class="cloud-mode">单用户自动同步</span>
+        <button class="quiet-button" type="button" data-cloud-sync ${cloudClient ? "" : "disabled"}>立即同步</button>
+      </div>
     </div>
-    ${cloudMessage && cloudStatus === "error" ? `<p class="cloud-message error">${escapeHtml(cloudMessage)}</p>` : ""}
   `;
 }
 
@@ -1076,11 +989,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (event.target.closest("[data-cloud-signout]")) {
-    void signOutCloud();
-    return;
-  }
-
   const completeButton = event.target.closest("[data-complete-task]");
   if (completeButton) {
     event.stopPropagation();
@@ -1174,12 +1082,6 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
-  if (event.target.matches("[data-cloud-auth-form]")) {
-    event.preventDefault();
-    const email = String(new FormData(event.target).get("email") || "").trim();
-    void sendMagicLink(email);
-    return;
-  }
   if (!event.target.matches("[data-vocabulary-form]")) return;
   event.preventDefault();
   addVocabularyItem();

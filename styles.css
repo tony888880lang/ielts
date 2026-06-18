@@ -233,8 +233,7 @@ button:disabled,
   font-weight: 800;
 }
 
-.cloud-copy p,
-.cloud-account p {
+.cloud-copy p {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 13px;
@@ -261,50 +260,16 @@ button:disabled,
   background: var(--coral);
 }
 
-.cloud-auth-form,
 .cloud-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.cloud-auth-form input {
-  width: min(280px, 40vw);
-  min-height: 40px;
-  border: 1px solid #cfdcd3;
-  border-radius: 8px;
-  background: #ffffff;
-  color: var(--ink);
-  padding: 9px 11px;
-}
-
-.cloud-auth-form input:focus {
-  border-color: var(--blue);
-  outline: 3px solid rgba(45, 108, 223, 0.13);
-}
-
-.cloud-account {
-  min-width: 0;
-  text-align: right;
-}
-
-.cloud-account strong,
-.cloud-account p {
-  display: block;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cloud-message {
-  margin: 8px 0 0;
-  color: var(--blue);
+.cloud-mode {
+  color: var(--muted);
   font-size: 13px;
-}
-
-.cloud-message.error {
-  color: #9b3d28;
+  white-space: nowrap;
 }
 
 .workspace-grid {
@@ -893,15 +858,6 @@ audio {
     display: grid;
   }
 
-  .cloud-account {
-    text-align: left;
-  }
-
-  .cloud-account strong,
-  .cloud-account p {
-    max-width: none;
-  }
-
   .top-actions {
     justify-content: stretch;
   }
@@ -976,14 +932,9 @@ audio {
     grid-column: 2;
   }
 
-  .cloud-auth-form,
   .cloud-actions {
     display: grid;
     grid-template-columns: 1fr;
-  }
-
-  .cloud-auth-form input {
-    width: 100%;
   }
 
   .expression-row .wide {
