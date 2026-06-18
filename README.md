@@ -1,6 +1,6 @@
 # 雅思学习任务面板
 
-纯前端静态网站，不需要数据库或构建工具。
+静态前端网站，使用 Supabase Authentication 和 Postgres 同步学习记录。
 
 ## 本地运行
 
@@ -23,9 +23,17 @@ http://127.0.0.1:5177/
 - `index.html`
 - `styles.css`
 - `app.js`
+- `cloud.js`
 - `data/`
 - `assets/audio/`
 
-Nginx、Apache、对象存储静态托管、GitHub Pages 或其他静态托管服务均可使用。
+Nginx、Apache、对象存储静态托管、GitHub Pages、Vercel 或其他静态托管服务均可使用。
 
-学习进度保存在浏览器 `localStorage` 中。更换浏览器、清理浏览器数据或更换域名后，原进度不会自动迁移。
+## 数据同步
+
+- 未登录时，记录保存在浏览器 `localStorage` 中。
+- 使用邮箱登录链接登录后，完整学习状态和生词本会同步到 Supabase。
+- 首次登录会在本机和云端记录之间选择较新的版本，并合并生词本。
+- 云端临时不可用时仍会保存本机副本，恢复后可点击“立即同步”。
+
+数据库结构和 RLS 策略见 `supabase/ielts_user_state.sql`。

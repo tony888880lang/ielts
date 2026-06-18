@@ -206,6 +206,107 @@ button:disabled,
   transition: width 0.25s ease;
 }
 
+.cloud-panel {
+  margin-bottom: 18px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.48);
+  padding: 12px 2px;
+}
+
+.cloud-layout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cloud-copy {
+  min-width: 0;
+}
+
+.cloud-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 800;
+}
+
+.cloud-copy p,
+.cloud-account p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sync-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #9aa49e;
+}
+
+.sync-dot.connecting,
+.sync-dot.saving {
+  background: var(--amber);
+}
+
+.sync-dot.synced {
+  background: var(--green);
+}
+
+.sync-dot.error {
+  background: var(--coral);
+}
+
+.cloud-auth-form,
+.cloud-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cloud-auth-form input {
+  width: min(280px, 40vw);
+  min-height: 40px;
+  border: 1px solid #cfdcd3;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 9px 11px;
+}
+
+.cloud-auth-form input:focus {
+  border-color: var(--blue);
+  outline: 3px solid rgba(45, 108, 223, 0.13);
+}
+
+.cloud-account {
+  min-width: 0;
+  text-align: right;
+}
+
+.cloud-account strong,
+.cloud-account p {
+  display: block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-message {
+  margin: 8px 0 0;
+  color: var(--blue);
+  font-size: 13px;
+}
+
+.cloud-message.error {
+  color: #9b3d28;
+}
+
 .workspace-grid {
   display: grid;
   grid-template-columns: 330px minmax(0, 1fr);
@@ -787,8 +888,18 @@ audio {
 
   .topbar,
   .detail-title,
-  .xdf-callout {
+  .xdf-callout,
+  .cloud-layout {
     display: grid;
+  }
+
+  .cloud-account {
+    text-align: left;
+  }
+
+  .cloud-account strong,
+  .cloud-account p {
+    max-width: none;
   }
 
   .top-actions {
@@ -863,6 +974,16 @@ audio {
 
   .sentence-action {
     grid-column: 2;
+  }
+
+  .cloud-auth-form,
+  .cloud-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-auth-form input {
+    width: 100%;
   }
 
   .expression-row .wide {
