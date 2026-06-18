@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>雅思学习任务面板</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2323785c'/%3E%3Cpath d='M18 16h28v7H36v25h-8V23H18z' fill='white'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">IELTS STUDY PANEL</p>
+          <h1>雅思学习任务面板</h1>
+        </div>
+        <div class="top-actions">
+          <a class="primary-link" href="https://ieltscat.xdf.cn/" target="_blank" rel="noreferrer">
+            新东方雅思学习
+          </a>
+          <button class="ghost-button" id="resetProgress" type="button">重置进度</button>
+        </div>
+      </header>
+
+      <section class="status-strip" aria-label="学习状态">
+        <div class="metric">
+          <span>今天</span>
+          <strong id="todayText">-</strong>
+        </div>
+        <div class="metric">
+          <span>当前循环</span>
+          <strong id="cycleText">-</strong>
+        </div>
+        <div class="metric">
+          <span>当前进度</span>
+          <strong id="progressText">-</strong>
+        </div>
+        <div class="metric">
+          <span>已完成循环</span>
+          <strong id="completedCyclesText">-</strong>
+        </div>
+        <div class="metric">
+          <span>本周完成任务</span>
+          <strong id="weeklyTasksText">-</strong>
+        </div>
+      </section>
+
+      <div class="progress-track" aria-hidden="true">
+        <div id="cycleProgressBar"></div>
+      </div>
+
+      <section class="workspace-grid">
+        <aside class="task-panel" aria-label="当前循环任务列表">
+          <div class="panel-heading">
+            <p class="eyebrow">CURRENT CYCLE</p>
+            <h2>当前循环任务</h2>
+          </div>
+          <div class="task-list" id="taskList"></div>
+        </aside>
+
+        <section class="detail-panel" aria-live="polite">
+          <div id="taskDetail"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
