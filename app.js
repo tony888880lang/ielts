@@ -3,8 +3,6 @@ import { createCloudClient } from "./cloud.js";
 const XDF_URL = "https://ieltscat.xdf.cn/";
 const STORAGE_KEY = "ielts-study-panel-state-v1";
 const SHARED_STATE_ID = "primary";
-const WRITING_BUCKET = "ielts-writing-files";
-const MAX_WRITING_FILE_SIZE = 20 * 1024 * 1024;
 
 const taskDefs = [
   {
@@ -54,44 +52,8 @@ const speakingSteps = [
   "不看文本，尝试复述一遍",
 ];
 
-const readingTypes = [
-  "True / False / Not Given",
-  "Matching Headings",
-  "Multiple Choice",
-  "Sentence Completion",
-  "Summary Completion",
-  "Matching Information",
-  "其他",
-];
-
-const readingReasons = [
-  "定位失败",
-  "单词不认识",
-  "同义替换没识别",
-  "逻辑判断错误",
-  "时间不够",
-  "题型不熟",
-  "粗心",
-];
-
-const task1Checks = [
-  "有 overview",
-  "描述主要趋势",
-  "抓住最高、最低、变化、对比",
-  "避免逐个数字流水账",
-  "达到 150 词以上",
-];
-
-const task2Checks = [
-  "明确回答题目",
-  "每段有中心句",
-  "观点有解释",
-  "有例子或展开",
-  "达到 250 词以上",
-  "检查明显语法错误",
-];
-
 const xdfTasks = new Set([1, 3, 4]);
+const taskNameByKey = Object.fromEntries(taskDefs.map((task) => [task.key, task.name]));
 
 let speakingMaterials = [];
 let hasLocalState = localStorage.getItem(STORAGE_KEY) !== null;
@@ -108,11 +70,9 @@ let cloudMessage = "";
 let cloudLastSynced = null;
 let activeLibrary = null;
 let selectedLibraryMaterialId = 1;
-let writingUploadStatus = {
-  essay: "",
-  model: "",
-};
-let writingUploadStatusCycleId = state.cycleId;
+let editingWritingCycleId = null;
+let comparisonCycleId = null;
+let vocabularyFilter = "all";
 
 const dom = {
   today: document.querySelector("#todayText"),
@@ -167,17 +127,7 @@ function initialCycleRecord(cycleId) {
   const speakingMaterialId = recommendedSpeakingMaterialId(cycleId);
   return {
     listening: {
-      materialName: "",
-      sectionType: "Section 3",
-      totalQuestions: "",
-      correctAnswers: "",
-      mainProblems: "",
-      vocabulary: "",
-      vocabularyDraft: {
-        word: "",
-        meaning: "",
-        context: "",
-      },
+      completedNote: "",
     },
     speaking: {
       materialId: speakingMaterialId,
@@ -189,12 +139,6 @@ function initialCycleRecord(cycleId) {
       loop: false,
       sentenceLoop: true,
       steps: Array(speakingSteps.length).fill(false),
-      expressions: [blankExpression()],
-      recitation: {
-        content: "",
-        fluent: "",
-        weak: "",
-      },
       localAudioName: "",
     },
     reading: {
@@ -211,23 +155,25 @@ function initialCycleRecord(cycleId) {
       timed: "是",
       wordCount: "",
       mainProblem: "",
-      task1Checks: [],
-      task2Checks: [],
-      attachments: {
-        essay: null,
-        model: null,
-      },
+      essayText: "",
+      modelText: "",
     },
+    vocabularyDrafts: initialVocabularyDrafts(),
   };
 }
 
-function blankExpression() {
-  return {
-    expression: "",
-    meaning: "",
-    original: "",
-    mine: "",
-  };
+function initialVocabularyDrafts() {
+  return Object.fromEntries(
+    taskDefs.map((task) => [
+      task.key,
+      {
+        word: "",
+        meaning: "",
+        context: "",
+        source: "",
+      },
+    ]),
+  );
 }
 
 function recommendedWritingType(cycleId) {
@@ -387,9 +333,19 @@ function mergeVocabularyBooks(localBook, remoteBook) {
   const entries = new Map();
   [...(remoteBook || []), ...(localBook || [])].forEach((item) => {
     const key = item.id || `${item.word || ""}|${item.addedAt || ""}`;
-    entries.set(key, item);
+    entries.set(key, normalizeVocabularyItem(item));
   });
   return [...entries.values()].sort((a, b) => stateTime(a.addedAt) - stateTime(b.addedAt));
+}
+
+function normalizeVocabularyItem(item) {
+  const subject = item.subject || "listening";
+  return {
+    ...item,
+    subject,
+    subjectName: item.subjectName || taskNameByKey[subject] || "雅思学习",
+    source: item.source || item.materialName || "",
+  };
 }
 
 function mergeWritingArchives(localArchive, remoteArchive) {
@@ -398,12 +354,21 @@ function mergeWritingArchives(localArchive, remoteArchive) {
     const key = item.id || `cycle-${item.cycleId || ""}`;
     const current = entries.get(key);
     if (!current || stateTime(item.updatedAt || item.completedAt) >= stateTime(current.updatedAt || current.completedAt)) {
-      entries.set(key, item);
+      entries.set(key, normalizeWritingArchiveEntry(item));
     }
   });
   return [...entries.values()].sort(
     (a, b) => stateTime(a.completedAt || a.updatedAt) - stateTime(b.completedAt || b.updatedAt),
   );
+}
+
+function normalizeWritingArchiveEntry(item) {
+  return {
+    ...item,
+    essayText: item.essayText || "",
+    modelText: item.modelText || "",
+    legacyAttachments: item.legacyAttachments || item.attachments || null,
+  };
 }
 
 function stateTime(value) {
@@ -455,7 +420,9 @@ function ensureState() {
   if (!state.records || typeof state.records !== "object") state.records = {};
   if (!state.completedEvents || !Array.isArray(state.completedEvents)) state.completedEvents = [];
   if (!state.vocabularyBook || !Array.isArray(state.vocabularyBook)) state.vocabularyBook = [];
+  state.vocabularyBook = state.vocabularyBook.map(normalizeVocabularyItem);
   if (!state.writingArchive || !Array.isArray(state.writingArchive)) state.writingArchive = [];
+  state.writingArchive = state.writingArchive.map(normalizeWritingArchiveEntry);
   hydrateWritingArchiveFromHistory();
   if (!state.tasks) state.tasks = initialTasks();
   if (!state.currentTask) state.currentTask = 1;
@@ -478,12 +445,9 @@ function hydrateWritingArchiveFromHistory() {
         timed: writing.timed || "",
         wordCount: writing.wordCount || "",
         mainProblem: writing.mainProblem || "",
-        task1Checks: [...(writing.task1Checks || [])],
-        task2Checks: [...(writing.task2Checks || [])],
-        attachments: {
-          essay: writing.attachments?.essay || null,
-          model: writing.attachments?.model || null,
-        },
+        essayText: writing.essayText || "",
+        modelText: writing.modelText || "",
+        legacyAttachments: writing.attachments || null,
         completedAt: event.at,
         updatedAt: event.at,
       });
@@ -494,32 +458,54 @@ function hydrateWritingArchiveFromHistory() {
   );
 }
 
-function ensureCycleRecord() {
-  const cycleKey = String(state.cycleId);
+function ensureCycleRecordFor(cycleId) {
+  const normalizedCycleId = Math.max(1, Number(cycleId) || 1);
+  const cycleKey = String(normalizedCycleId);
   if (!state.records[cycleKey]) {
-    state.records[cycleKey] = initialCycleRecord(state.cycleId);
+    state.records[cycleKey] = initialCycleRecord(normalizedCycleId);
   }
   const record = state.records[cycleKey];
-  if (!record.listening) record.listening = initialCycleRecord(state.cycleId).listening;
-  if (!record.listening.vocabularyDraft) {
-    record.listening.vocabularyDraft = { word: "", meaning: "", context: "" };
-  }
-  if (!record.speaking) record.speaking = initialCycleRecord(state.cycleId).speaking;
-  if (!record.speaking.expressions?.length) record.speaking.expressions = [blankExpression()];
+  if (!record.listening) record.listening = initialCycleRecord(normalizedCycleId).listening;
+  if (!record.speaking) record.speaking = initialCycleRecord(normalizedCycleId).speaking;
   if (!record.speaking.steps?.length) record.speaking.steps = Array(speakingSteps.length).fill(false);
   if (typeof record.speaking.sentenceLoop !== "boolean") record.speaking.sentenceLoop = true;
   if (typeof record.speaking.materialManuallySelected !== "boolean") {
     record.speaking.materialManuallySelected = false;
   }
-  hydrateSpeakingDefaults(record.speaking, state.cycleId);
-  if (!record.writing) record.writing = initialCycleRecord(state.cycleId).writing;
-  if (!record.writing.writingType) record.writing.writingType = recommendedWritingType(state.cycleId);
-  if (!record.writing.attachments || typeof record.writing.attachments !== "object") {
-    record.writing.attachments = { essay: null, model: null };
+  hydrateSpeakingDefaults(record.speaking, normalizedCycleId);
+  if (!record.reading) record.reading = initialCycleRecord(normalizedCycleId).reading;
+  if (!record.writing) record.writing = initialCycleRecord(normalizedCycleId).writing;
+  if (!record.writing.writingType) {
+    record.writing.writingType = recommendedWritingType(normalizedCycleId);
   }
-  if (!("essay" in record.writing.attachments)) record.writing.attachments.essay = null;
-  if (!("model" in record.writing.attachments)) record.writing.attachments.model = null;
+  if (typeof record.writing.essayText !== "string") record.writing.essayText = "";
+  if (typeof record.writing.modelText !== "string") record.writing.modelText = "";
+  if (!record.vocabularyDrafts || typeof record.vocabularyDrafts !== "object") {
+    record.vocabularyDrafts = initialVocabularyDrafts();
+  }
+  taskDefs.forEach((task) => {
+    if (!record.vocabularyDrafts[task.key]) {
+      record.vocabularyDrafts[task.key] = initialVocabularyDrafts()[task.key];
+    }
+  });
+  const legacyDraft = record.listening?.vocabularyDraft;
+  if (
+    legacyDraft &&
+    !record.vocabularyDrafts.listening.word &&
+    !record.vocabularyDrafts.listening.meaning
+  ) {
+    record.vocabularyDrafts.listening = {
+      word: legacyDraft.word || "",
+      meaning: legacyDraft.meaning || "",
+      context: legacyDraft.context || "",
+      source: record.listening.materialName || "",
+    };
+  }
   return record;
+}
+
+function ensureCycleRecord() {
+  return ensureCycleRecordFor(state.cycleId);
 }
 
 function hydrateSpeakingDefaults(speaking, cycleId) {
@@ -557,15 +543,15 @@ function findMaterial(id) {
   return speakingMaterials.find((material) => String(material.id) === String(id));
 }
 
-function writingFilesReady(writing = currentCycleRecord().writing) {
-  return Boolean(writing.attachments?.essay && writing.attachments?.model);
+function writingTextsReady(writing = currentCycleRecord().writing) {
+  return Boolean(writing.essayText?.trim() && writing.modelText?.trim());
 }
 
 function taskCanComplete(taskId) {
   if (taskId !== state.currentTask || state.tasks[taskKeyById[taskId]] !== "in_progress") {
     return false;
   }
-  return taskId !== 4 || writingFilesReady();
+  return taskId !== 4 || writingTextsReady();
 }
 
 function render() {
@@ -625,7 +611,7 @@ function renderTasks() {
       const isCurrent = state.currentTask === task.id;
       const isCompleted = status === "completed";
       const canComplete = taskCanComplete(task.id);
-      const waitingForFiles = task.id === 4 && isCurrent && !writingFilesReady();
+      const waitingForWritingTexts = task.id === 4 && isCurrent && !writingTextsReady();
       return `
         <article class="task-card ${selected} ${current} ${completed}" data-select-task="${task.id}" tabindex="0">
           <div class="task-card-header">
@@ -639,7 +625,7 @@ function renderTasks() {
           <div class="task-footer">
             <span class="duration">${escapeHtml(task.duration)}</span>
             <button class="mini-button" type="button" data-complete-task="${task.id}" ${canComplete ? "" : "disabled"}>
-              ${isCompleted ? "已完成" : waitingForFiles ? "待上传" : isCurrent ? "完成" : "等待"}
+              ${isCompleted ? "已完成" : waitingForWritingTexts ? "待粘贴" : isCurrent ? "完成" : "等待"}
             </button>
           </div>
         </article>
@@ -686,8 +672,8 @@ function renderDetail() {
 
 function completionNote(taskId, status) {
   if (status === "completed") return "这个任务已在当前循环完成。";
-  if (taskId === 4 && !writingFilesReady()) {
-    return "上传“我的作文”和“范文”后，才能完成并自动归档本次写作。";
+  if (taskId === 4 && !writingTextsReady()) {
+    return "粘贴“我的作文”和“范文”后，才能完成并自动生成对比档案。";
   }
   return "完成后会自动进入下一项任务。";
 }
@@ -705,8 +691,6 @@ function renderXdfCallout() {
 }
 
 function renderListening() {
-  const rec = currentCycleRecord().listening;
-  const draft = rec.vocabularyDraft;
   return `
     <section class="section-block">
       <h3>学习步骤</h3>
@@ -719,82 +703,7 @@ function renderListening() {
         "最后重新听一遍，确认能听懂主要内容。",
       ])}
     </section>
-    <section class="section-block">
-      <h3>听力记录</h3>
-      <div class="form-grid">
-        ${inputField("listening.materialName", "听力材料名称", rec.materialName)}
-        ${selectField("listening.sectionType", "Section 类型", rec.sectionType, ["Section 3", "Section 4"])}
-        ${inputField("listening.totalQuestions", "题目总数", rec.totalQuestions, "number")}
-        ${inputField("listening.correctAnswers", "正确题数", rec.correctAnswers, "number")}
-        ${textareaField("listening.mainProblems", "本次主要问题", rec.mainProblems, false)}
-      </div>
-    </section>
-    <section class="section-block">
-      <h3>记录听力生词</h3>
-      <p class="note vocabulary-note">每次只记录一个生词或短语。来源材料和 Section 会自动带入生词本。</p>
-      <form class="vocabulary-form" data-vocabulary-form>
-        <label class="field">
-          <span>生词 / 短语</span>
-          <input value="${escapeAttr(draft.word)}" data-vocabulary-draft="word" required />
-        </label>
-        <label class="field">
-          <span>中文释义</span>
-          <input value="${escapeAttr(draft.meaning)}" data-vocabulary-draft="meaning" required />
-        </label>
-        <label class="field vocabulary-context">
-          <span>原句 / 听力语境（选填）</span>
-          <textarea data-vocabulary-draft="context">${escapeHtml(draft.context)}</textarea>
-        </label>
-        <button class="solid-button vocabulary-add" type="submit">加入生词本</button>
-      </form>
-    </section>
-    <section class="section-block">
-      <div class="section-heading-row">
-        <div>
-          <h3>我的听力生词本</h3>
-          <p class="note">共 ${state.vocabularyBook.length} 条，按最新记录排序。</p>
-        </div>
-        <button class="quiet-button" type="button" data-export-vocabulary ${state.vocabularyBook.length ? "" : "disabled"}>下载 CSV</button>
-      </div>
-      ${renderVocabularyBook()}
-    </section>
-  `;
-}
-
-function renderVocabularyBook() {
-  if (!state.vocabularyBook.length) {
-    return `<p class="empty-state">还没有生词。完成上面的三个字段后，第一条记录就会出现在这里。</p>`;
-  }
-
-  return `
-    <div class="vocabulary-list">
-      ${[...state.vocabularyBook]
-        .reverse()
-        .map(
-          (item) => `
-            <article class="vocabulary-item">
-              <div class="vocabulary-word">
-                <strong>${escapeHtml(item.word)}</strong>
-                <span>${escapeHtml(item.meaning)}</span>
-              </div>
-              ${item.context ? `<p>${escapeHtml(item.context)}</p>` : ""}
-              <div class="vocabulary-meta">
-                <span>${escapeHtml(formatVocabularyDate(item.addedAt))}</span>
-                <span>${escapeHtml(item.materialName || "未填写材料")}</span>
-                <span>${escapeHtml(item.sectionType || "未填写 Section")}</span>
-              </div>
-              <button
-                class="icon-delete"
-                type="button"
-                data-remove-vocabulary="${escapeAttr(item.id)}"
-                aria-label="删除 ${escapeAttr(item.word)}"
-                title="删除这条生词"
-              >×</button>
-            </article>
-          `,
-        )
-        .join("")}
-    </div>
+    ${renderVocabularyCapture("listening")}
   `;
 }
 
@@ -914,52 +823,11 @@ function renderSpeaking() {
         ${replacements.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
       </ul>
     </section>
-
-    <section class="section-block">
-      <h3>表达记录</h3>
-      <div class="expression-list">
-        ${rec.expressions.map(renderExpressionRow).join("")}
-      </div>
-      <button class="quiet-button" type="button" data-add-expression>新增表达</button>
-    </section>
-
-    <section class="section-block">
-      <h3>背诵记录</h3>
-      <div class="form-grid">
-        ${textareaField("speaking.recitation.content", "今日背诵内容", rec.recitation.content, false)}
-        ${textareaField("speaking.recitation.fluent", "我能脱稿复述的部分", rec.recitation.fluent, false)}
-        ${textareaField("speaking.recitation.weak", "还不熟的部分", rec.recitation.weak, false)}
-      </div>
-    </section>
-  `;
-}
-
-function renderExpressionRow(item, index) {
-  return `
-    <div class="expression-row">
-      <label class="field">
-        <span>表达</span>
-        <input value="${escapeAttr(item.expression)}" data-expression-field="${index}.expression" />
-      </label>
-      <label class="field">
-        <span>中文意思</span>
-        <input value="${escapeAttr(item.meaning)}" data-expression-field="${index}.meaning" />
-      </label>
-      <button class="danger-button" type="button" data-remove-expression="${index}">删除</button>
-      <label class="field wide">
-        <span>原句</span>
-        <textarea data-expression-field="${index}.original">${escapeHtml(item.original)}</textarea>
-      </label>
-      <label class="field wide">
-        <span>我自己的造句</span>
-        <textarea data-expression-field="${index}.mine">${escapeHtml(item.mine)}</textarea>
-      </label>
-    </div>
+    ${renderVocabularyCapture("speaking", material?.displayTitle || "")}
   `;
 }
 
 function renderReading() {
-  const rec = currentCycleRecord().reading;
   return `
     <section class="section-block">
       <h3>学习步骤</h3>
@@ -972,22 +840,11 @@ function renderReading() {
         "记录错因和同义替换。",
       ])}
     </section>
-    <section class="section-block">
-      <h3>阅读记录</h3>
-      <div class="form-grid">
-        ${inputField("reading.materialName", "阅读材料名称", rec.materialName)}
-        ${inputField("reading.passageNo", "Passage 编号", rec.passageNo)}
-        ${inputField("reading.totalQuestions", "题目总数", rec.totalQuestions, "number")}
-        ${inputField("reading.correctAnswers", "正确题数", rec.correctAnswers, "number")}
-        ${checkboxGroup("reading.wrongTypes", "错误题型", readingTypes, rec.wrongTypes)}
-        ${selectField("reading.mainReason", "主要错因", rec.mainReason, ["", ...readingReasons])}
-      </div>
-    </section>
+    ${renderVocabularyCapture("reading")}
   `;
 }
 
 function renderWriting() {
-  resetWritingUploadStatusForCycle();
   const rec = currentCycleRecord().writing;
   return `
     <section class="section-block">
@@ -1001,7 +858,7 @@ function renderWriting() {
         "Task 1 限时 20 分钟，150 词以上。",
         "Task 2 限时 40 分钟，250 词以上。",
         "不查资料，按真实考试状态完成。",
-        "写完后做简单自查。",
+        "写完后通读全文，记录最值得改进的问题。",
         "记录本次最大问题。",
       ])}
     </section>
@@ -1016,70 +873,162 @@ function renderWriting() {
       </div>
     </section>
     <section class="section-block">
+      <div class="section-heading-row writing-text-heading">
+        <div>
+          <h3>作文文本</h3>
+          <p class="note">直接粘贴两篇文章，完成后自动生成对比学习页面。</p>
+        </div>
+        <div class="heading-actions">
+          <button
+            class="solid-button"
+            type="button"
+            data-open-writing-comparison="${state.cycleId}"
+            ${writingTextsReady(rec) ? "" : "disabled"}
+          >预览对比学习</button>
+          <button class="quiet-button" type="button" data-open-library="writing">
+            查看写作档案（${state.writingArchive.length}）
+          </button>
+        </div>
+      </div>
+      <div class="writing-text-grid">
+        <label class="field">
+          <span>我的作文</span>
+          <textarea class="writing-essay-text" data-field="writing.essayText" placeholder="把你的作文全文粘贴到这里…">${escapeHtml(rec.essayText)}</textarea>
+        </label>
+        <label class="field">
+          <span>范文</span>
+          <textarea class="writing-essay-text" data-field="writing.modelText" placeholder="把范文全文粘贴到这里…">${escapeHtml(rec.modelText)}</textarea>
+        </label>
+      </div>
+    </section>
+    ${renderVocabularyCapture("writing", rec.topic)}
+  `;
+}
+
+function renderVocabularyCapture(subject, suggestedSource = "") {
+  const draft = currentCycleRecord().vocabularyDrafts[subject];
+  const taskName = taskNameByKey[subject] || "雅思学习";
+  const sourceValue = draft.source || suggestedSource;
+  return `
+    <section class="section-block vocabulary-capture">
       <div class="section-heading-row">
         <div>
-          <h3>上传写作版本</h3>
-          <p class="note">两个文件都会保存到云端，并在完成任务时进入写作档案。</p>
+          <h3>记录生词</h3>
+          <p class="note">本条会标记为“${escapeHtml(taskName)}”，并进入统一生词本。</p>
         </div>
-        <button class="quiet-button" type="button" data-open-library="writing">
-          查看写作档案（${state.writingArchive.length}）
+        <button class="quiet-button" type="button" data-open-library="vocabulary">
+          查看生词本（${state.vocabularyBook.length}）
         </button>
       </div>
-      <div class="writing-upload-grid">
-        ${renderWritingUploadSlot("essay", "我的作文", rec.attachments.essay)}
-        ${renderWritingUploadSlot("model", "范文", rec.attachments.model)}
-      </div>
-      <p class="note upload-privacy-note">
-        支持 PDF、Word、Pages、RTF、TXT、Markdown 和常见图片，单个文件不超过 20 MB。
-      </p>
-    </section>
-    <section class="section-block">
-      <h3>Task 1 自查</h3>
-      ${checkRows("writing.task1Checks", task1Checks, rec.task1Checks)}
-    </section>
-    <section class="section-block">
-      <h3>Task 2 自查</h3>
-      ${checkRows("writing.task2Checks", task2Checks, rec.task2Checks)}
+      <form class="vocabulary-form" data-vocabulary-form="${subject}">
+        <label class="field">
+          <span>生词 / 短语</span>
+          <input
+            value="${escapeAttr(draft.word)}"
+            data-vocabulary-subject="${subject}"
+            data-vocabulary-field="word"
+            required
+          />
+        </label>
+        <label class="field">
+          <span>中文释义</span>
+          <input
+            value="${escapeAttr(draft.meaning)}"
+            data-vocabulary-subject="${subject}"
+            data-vocabulary-field="meaning"
+            required
+          />
+        </label>
+        <label class="field">
+          <span>来源（选填）</span>
+          <input
+            value="${escapeAttr(sourceValue)}"
+            data-vocabulary-subject="${subject}"
+            data-vocabulary-field="source"
+          />
+        </label>
+        <label class="field vocabulary-context">
+          <span>原句 / 语境（选填）</span>
+          <textarea
+            data-vocabulary-subject="${subject}"
+            data-vocabulary-field="context"
+          >${escapeHtml(draft.context)}</textarea>
+        </label>
+        <button class="solid-button vocabulary-add" type="submit">加入统一生词本</button>
+      </form>
     </section>
   `;
 }
 
-function resetWritingUploadStatusForCycle() {
-  if (writingUploadStatusCycleId === state.cycleId) return;
-  writingUploadStatusCycleId = state.cycleId;
-  writingUploadStatus = { essay: "", model: "" };
+function renderVocabularyLibrary() {
+  const filters = [
+    ["all", "全部"],
+    ...taskDefs.map((task) => [task.key, task.name.replace("雅思", "")]),
+  ];
+  const entries =
+    vocabularyFilter === "all"
+      ? state.vocabularyBook
+      : state.vocabularyBook.filter((item) => item.subject === vocabularyFilter);
+  return `
+    <div class="vocabulary-library">
+      <div class="vocabulary-toolbar">
+        <div class="filter-tabs" aria-label="按科目筛选生词">
+          ${filters
+            .map(
+              ([key, label]) => `
+                <button
+                  class="filter-tab ${vocabularyFilter === key ? "is-active" : ""}"
+                  type="button"
+                  data-vocabulary-filter="${key}"
+                >${escapeHtml(label)}</button>
+              `,
+            )
+            .join("")}
+        </div>
+        <button class="quiet-button" type="button" data-export-vocabulary ${state.vocabularyBook.length ? "" : "disabled"}>
+          下载 CSV
+        </button>
+      </div>
+      <p class="note">当前显示 ${entries.length} 条，共记录 ${state.vocabularyBook.length} 条。</p>
+      ${renderVocabularyBook(entries)}
+    </div>
+  `;
 }
 
-function renderWritingUploadSlot(kind, label, attachment) {
-  const status = writingUploadStatus[kind];
-  const inputId = `writing-file-${kind}`;
+function renderVocabularyBook(entries = state.vocabularyBook) {
+  if (!entries.length) {
+    return `<p class="empty-state">这个分类还没有生词。</p>`;
+  }
   return `
-    <article class="writing-upload-card ${attachment ? "has-file" : ""}">
-      <div class="writing-upload-heading">
-        <span class="upload-kind">${escapeHtml(label)}</span>
-        <span class="upload-state">${attachment ? "已同步" : "未上传"}</span>
-      </div>
-      ${
-        attachment
-          ? `<a class="writing-file-link" href="${escapeAttr(attachment.url)}" target="_blank" rel="noreferrer">
-              <strong>${escapeHtml(attachment.name)}</strong>
-              <span>${escapeHtml(formatFileSize(attachment.size))} · ${escapeHtml(formatArchiveDate(attachment.uploadedAt))}</span>
-            </a>`
-          : `<p>选择文件后会立即上传并保存到当前循环。</p>`
-      }
-      ${status ? `<p class="upload-status">${escapeHtml(status)}</p>` : ""}
-      <label class="quiet-button writing-file-picker" for="${inputId}">
-        ${attachment ? "替换文件" : `上传${escapeHtml(label)}`}
-      </label>
-      <input
-        class="visually-hidden"
-        id="${inputId}"
-        type="file"
-        data-writing-file="${kind}"
-        accept=".pdf,.doc,.docx,.pages,.rtf,.txt,.md,.markdown,.jpg,.jpeg,.png,.webp"
-        ${cloudClient ? "" : "disabled"}
-      />
-    </article>
+    <div class="vocabulary-list">
+      ${[...entries]
+        .reverse()
+        .map(
+          (item) => `
+            <article class="vocabulary-item">
+              <div class="vocabulary-word">
+                <strong>${escapeHtml(item.word)}</strong>
+                <span>${escapeHtml(item.meaning)}</span>
+              </div>
+              ${item.context ? `<p>${escapeHtml(item.context)}</p>` : ""}
+              <div class="vocabulary-meta">
+                <span class="subject-badge ${escapeAttr(item.subject)}">${escapeHtml(item.subjectName)}</span>
+                <span>第 ${escapeHtml(item.cycleId || "?")} 循环</span>
+                <span>${escapeHtml(formatVocabularyDate(item.addedAt))}</span>
+                ${item.source ? `<span>${escapeHtml(item.source)}</span>` : ""}
+              </div>
+              <button
+                class="icon-delete"
+                type="button"
+                data-remove-vocabulary="${escapeAttr(item.id)}"
+                aria-label="删除 ${escapeAttr(item.word)}"
+                title="删除这条生词"
+              >×</button>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -1092,21 +1041,60 @@ function renderOverlay() {
     return;
   }
 
+  const overlayViews = {
+    speaking: {
+      label: "口语材料库",
+      eyebrow: "SPEAKING LIBRARY",
+      title: "口语材料库",
+      subtitle: "18 篇短文、音频和重点表达集中浏览。",
+      body: renderSpeakingLibrary,
+    },
+    writing: {
+      label: "写作档案",
+      eyebrow: "WRITING ARCHIVE",
+      title: "写作档案",
+      subtitle: `已归档 ${state.writingArchive.length} 次写作记录。`,
+      body: renderWritingArchive,
+    },
+    vocabulary: {
+      label: "统一生词本",
+      eyebrow: "VOCABULARY BOOK",
+      title: "统一生词本",
+      subtitle: `听、说、读、写共记录 ${state.vocabularyBook.length} 条生词。`,
+      body: renderVocabularyLibrary,
+    },
+    "writing-cycle": {
+      label: "历史写作补录",
+      eyebrow: "WRITING HISTORY",
+      title: `第 ${editingWritingCycleId || "?"} 个循环`,
+      subtitle: "补录或修改历史写作，不会改变当前循环进度。",
+      body: renderWritingCycleEditor,
+    },
+    comparison: {
+      label: "写作对比学习",
+      eyebrow: "WRITING COMPARISON",
+      title: `第 ${comparisonCycleId || "?"} 个循环对比`,
+      subtitle: "对照你的作文与范文，集中查看可借鉴的词汇、表达和句型。",
+      body: renderWritingComparison,
+    },
+  };
+  const view = overlayViews[activeLibrary] || overlayViews.writing;
+
   dom.overlay.classList.remove("hidden");
   document.body.classList.add("overlay-open");
   dom.overlay.innerHTML = `
     <div class="overlay-backdrop" data-close-library></div>
-    <section class="library-dialog" role="dialog" aria-modal="true" aria-label="${activeLibrary === "speaking" ? "口语材料库" : "写作档案"}">
+    <section class="library-dialog" role="dialog" aria-modal="true" aria-label="${escapeAttr(view.label)}">
       <header class="library-header">
         <div>
-          <p class="eyebrow">${activeLibrary === "speaking" ? "SPEAKING LIBRARY" : "WRITING ARCHIVE"}</p>
-          <h2>${activeLibrary === "speaking" ? "口语材料库" : "写作档案"}</h2>
-          <p>${activeLibrary === "speaking" ? "18 篇短文、音频和重点表达集中浏览。" : `已归档 ${state.writingArchive.length} 次写作记录。`}</p>
+          <p class="eyebrow">${escapeHtml(view.eyebrow)}</p>
+          <h2>${escapeHtml(view.title)}</h2>
+          <p>${escapeHtml(view.subtitle)}</p>
         </div>
         <button class="overlay-close" type="button" data-close-library aria-label="关闭资料库">×</button>
       </header>
       <div class="library-body">
-        ${activeLibrary === "speaking" ? renderSpeakingLibrary() : renderWritingArchive()}
+        ${view.body()}
       </div>
     </section>
   `;
@@ -1170,7 +1158,7 @@ function renderWritingArchive() {
     return `
       <div class="empty-state archive-empty">
         <strong>还没有写作档案</strong>
-        <span>在写作任务中上传“我的作文”和“范文”，完成任务后会自动出现在这里。</span>
+        <span>完成写作任务后会自动归档；也可以从这里回到历史循环补录文章。</span>
       </div>
     `;
   }
@@ -1186,6 +1174,7 @@ function renderWritingArchive() {
 }
 
 function renderWritingArchiveEntry(entry) {
+  const ready = writingTextsReady(entry);
   return `
     <article class="writing-archive-card">
       <div class="archive-card-heading">
@@ -1200,24 +1189,340 @@ function renderWritingArchiveEntry(entry) {
         <span>${entry.wordCount ? `${escapeHtml(entry.wordCount)} 词` : "未记录字数"}</span>
       </div>
       ${entry.mainProblem ? `<p class="archive-problem"><strong>本次最大问题：</strong>${escapeHtml(entry.mainProblem)}</p>` : ""}
-      <div class="archive-files">
-        ${renderArchivedFile("我的作文", entry.attachments?.essay)}
-        ${renderArchivedFile("范文", entry.attachments?.model)}
+      <div class="archive-text-status ${ready ? "is-ready" : "is-missing"}">
+        <strong>${ready ? "作文与范文已保存" : "等待补录作文文本"}</strong>
+        <span>${ready ? "可以打开对比学习页。" : "进入这个循环，粘贴你的作文和范文后即可生成对比。"}</span>
       </div>
+      <div class="archive-actions">
+        <button class="quiet-button" type="button" data-edit-writing-cycle="${escapeAttr(entry.cycleId)}">
+          ${ready ? "编辑此循环" : "回到此循环补录"}
+        </button>
+        <button
+          class="solid-button"
+          type="button"
+          data-open-writing-comparison="${escapeAttr(entry.cycleId)}"
+          ${ready ? "" : "disabled"}
+        >打开对比学习</button>
+      </div>
+      ${renderLegacyWritingFiles(entry.legacyAttachments)}
     </article>
   `;
 }
 
-function renderArchivedFile(label, attachment) {
-  if (!attachment) {
-    return `<span class="archive-file missing"><strong>${escapeHtml(label)}</strong><span>旧记录未上传</span></span>`;
-  }
+function renderLegacyWritingFiles(attachments) {
+  const files = [
+    ["旧版作文文件", attachments?.essay],
+    ["旧版范文文件", attachments?.model],
+  ].filter(([, attachment]) => attachment?.url);
+  if (!files.length) return "";
   return `
-    <a class="archive-file" href="${escapeAttr(attachment.url)}" target="_blank" rel="noreferrer">
-      <strong>${escapeHtml(label)}</strong>
-      <span>${escapeHtml(attachment.name)} · ${escapeHtml(formatFileSize(attachment.size))}</span>
-    </a>
+    <div class="legacy-writing-files">
+      ${files
+        .map(
+          ([label, attachment]) => `
+            <a href="${escapeAttr(attachment.url)}" target="_blank" rel="noreferrer">
+              ${escapeHtml(label)}：${escapeHtml(attachment.name || "查看文件")}
+            </a>
+          `,
+        )
+        .join("")}
+    </div>
   `;
+}
+
+function renderWritingCycleEditor() {
+  const cycleId = Math.max(1, Number(editingWritingCycleId) || 1);
+  const writing = ensureCycleRecordFor(cycleId).writing;
+  return `
+    <div class="history-writing-editor">
+      <div class="history-editor-toolbar">
+        <button class="quiet-button" type="button" data-back-writing-archive>← 返回写作档案</button>
+        <span>所有修改都会自动同步到云端</span>
+      </div>
+      <section class="section-block">
+        <h3>写作记录</h3>
+        <div class="form-grid">
+          ${historySelectField(cycleId, "writingType", "写作类型", writing.writingType, ["Task 1", "Task 2"])}
+          ${historyInputField(cycleId, "wordCount", "字数", writing.wordCount, "number")}
+          ${historyTextareaField(cycleId, "topic", "题目", writing.topic)}
+          ${historySelectField(cycleId, "timed", "是否限时完成", writing.timed, ["是", "否"])}
+          ${historyTextareaField(cycleId, "mainProblem", "本次最大问题", writing.mainProblem)}
+        </div>
+      </section>
+      <section class="section-block">
+        <div class="section-heading-row">
+          <div>
+            <h3>补录作文文本</h3>
+            <p class="note">直接粘贴全文，不需要上传文件。</p>
+          </div>
+          <button
+            class="solid-button"
+            type="button"
+            data-open-writing-comparison="${cycleId}"
+            ${writingTextsReady(writing) ? "" : "disabled"}
+          >打开对比学习</button>
+        </div>
+        <div class="writing-text-grid">
+          ${historyEssayField(cycleId, "essayText", "我的作文", writing.essayText)}
+          ${historyEssayField(cycleId, "modelText", "范文", writing.modelText)}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function historyInputField(cycleId, key, label, value, type = "text") {
+  return `
+    <label class="field">
+      <span>${escapeHtml(label)}</span>
+      <input
+        type="${escapeAttr(type)}"
+        value="${escapeAttr(value)}"
+        data-history-writing-cycle="${cycleId}"
+        data-history-writing-field="${escapeAttr(key)}"
+      />
+    </label>
+  `;
+}
+
+function historySelectField(cycleId, key, label, value, options) {
+  return `
+    <label class="field">
+      <span>${escapeHtml(label)}</span>
+      <select data-history-writing-cycle="${cycleId}" data-history-writing-field="${escapeAttr(key)}">
+        ${options
+          .map(
+            (option) => `
+              <option value="${escapeAttr(option)}" ${option === value ? "selected" : ""}>
+                ${escapeHtml(option)}
+              </option>
+            `,
+          )
+          .join("")}
+      </select>
+    </label>
+  `;
+}
+
+function historyTextareaField(cycleId, key, label, value) {
+  return `
+    <label class="field full">
+      <span>${escapeHtml(label)}</span>
+      <textarea
+        data-history-writing-cycle="${cycleId}"
+        data-history-writing-field="${escapeAttr(key)}"
+      >${escapeHtml(value)}</textarea>
+    </label>
+  `;
+}
+
+function historyEssayField(cycleId, key, label, value) {
+  return `
+    <label class="field">
+      <span>${escapeHtml(label)}</span>
+      <textarea
+        class="writing-essay-text"
+        data-history-writing-cycle="${cycleId}"
+        data-history-writing-field="${escapeAttr(key)}"
+        placeholder="把${escapeAttr(label)}全文粘贴到这里…"
+      >${escapeHtml(value)}</textarea>
+    </label>
+  `;
+}
+
+function renderWritingComparison() {
+  const cycleId = Math.max(1, Number(comparisonCycleId) || 1);
+  const writing = ensureCycleRecordFor(cycleId).writing;
+  if (!writingTextsReady(writing)) {
+    return `
+      <div class="empty-state archive-empty">
+        <strong>还不能生成对比</strong>
+        <span>请先补齐这个循环的“我的作文”和“范文”。</span>
+        <button class="solid-button" type="button" data-edit-writing-cycle="${cycleId}">去补录</button>
+      </div>
+    `;
+  }
+  const insights = analyzeWritingComparison(writing.essayText, writing.modelText);
+  const highlights = [...insights.phrases, ...insights.vocabulary];
+  return `
+    <div class="writing-comparison">
+      <div class="history-editor-toolbar">
+        <button class="quiet-button" type="button" data-back-writing-archive>← 返回写作档案</button>
+        <button class="quiet-button" type="button" data-edit-writing-cycle="${cycleId}">编辑本循环</button>
+      </div>
+      <section class="comparison-summary">
+        <div><strong>${countEnglishWords(writing.essayText)}</strong><span>我的作文字数</span></div>
+        <div><strong>${countEnglishWords(writing.modelText)}</strong><span>范文字数</span></div>
+        <div><strong>${insights.vocabulary.length}</strong><span>可学习词汇</span></div>
+        <div><strong>${insights.patterns.length}</strong><span>句型观察</span></div>
+      </section>
+      <section class="comparison-insights">
+        ${renderInsightTerms("值得学习的词汇", "范文使用、而你的文章尚未使用的较有信息量词汇。", insights.vocabulary)}
+        ${renderInsightTerms("可借鉴的连接与表达", "可用于组织论证、对比、让步或总结的表达。", insights.phrases)}
+        ${renderSentencePatterns(insights.patterns)}
+      </section>
+      <section class="essay-comparison-grid">
+        <article class="essay-panel">
+          <div class="essay-panel-heading">
+            <h3>我的作文</h3>
+            <span>原文</span>
+          </div>
+          <div class="essay-copy">${escapeHtml(writing.essayText)}</div>
+        </article>
+        <article class="essay-panel model">
+          <div class="essay-panel-heading">
+            <h3>范文</h3>
+            <span>重点已高亮</span>
+          </div>
+          <div class="essay-copy">${highlightEnglishText(writing.modelText, highlights)}</div>
+        </article>
+      </section>
+    </div>
+  `;
+}
+
+function renderInsightTerms(title, description, items) {
+  return `
+    <article class="insight-card">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(description)}</p>
+      ${
+        items.length
+          ? `<div class="insight-terms">${items.map((item) => `<mark>${escapeHtml(item)}</mark>`).join("")}</div>`
+          : `<span class="muted-copy">暂未发现明显差异。</span>`
+      }
+    </article>
+  `;
+}
+
+function renderSentencePatterns(patterns) {
+  return `
+    <article class="insight-card sentence-pattern-card">
+      <h3>句型观察</h3>
+      <p>从范文中抽取的典型复杂句或论证结构。</p>
+      ${
+        patterns.length
+          ? `<ul>${patterns
+              .map(
+                (item) => `
+                  <li>
+                    <strong>${escapeHtml(item.label)}</strong>
+                    <span>${escapeHtml(item.sentence)}</span>
+                  </li>
+                `,
+              )
+              .join("")}</ul>`
+          : `<span class="muted-copy">暂未识别到预设句型。</span>`
+      }
+    </article>
+  `;
+}
+
+function analyzeWritingComparison(essayText, modelText) {
+  const stopWords = new Set(
+    "about after again against also among because been before being between both could does doing during each from further have having here into itself just more most other over same should some such than that their them then there these they this those through under very what when where which while will with would your".split(
+      " ",
+    ),
+  );
+  const essayWords = new Set(extractEnglishWords(essayText).map((word) => word.toLowerCase()));
+  const modelWords = extractEnglishWords(modelText).map((word) => word.toLowerCase());
+  const counts = new Map();
+  modelWords.forEach((word) => counts.set(word, (counts.get(word) || 0) + 1));
+  const vocabulary = [...counts]
+    .filter(
+      ([word]) =>
+        word.length >= 6 &&
+        !stopWords.has(word) &&
+        !essayWords.has(word) &&
+        !/^\d+$/.test(word),
+    )
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))
+    .slice(0, 18)
+    .map(([word]) => word);
+
+  const phraseCandidates = [
+    "as a result",
+    "as a consequence",
+    "on the other hand",
+    "in contrast",
+    "by contrast",
+    "for instance",
+    "for example",
+    "in addition",
+    "more importantly",
+    "to a large extent",
+    "it is clear that",
+    "there is no doubt that",
+    "not only",
+    "but also",
+    "even though",
+    "rather than",
+    "in terms of",
+    "with regard to",
+    "plays a crucial role",
+    "has a significant impact",
+  ];
+  const lowerEssay = essayText.toLowerCase();
+  const lowerModel = modelText.toLowerCase();
+  const phrases = phraseCandidates
+    .filter((phrase) => lowerModel.includes(phrase) && !lowerEssay.includes(phrase))
+    .slice(0, 12);
+
+  const patternDefs = [
+    ["让步结构", /\b(?:although|even though|while)\b/i],
+    ["转折对比", /\b(?:however|in contrast|on the other hand|whereas)\b/i],
+    ["因果结果", /\b(?:therefore|consequently|as a result|as a consequence)\b/i],
+    ["递进结构", /\bnot only\b.+\bbut also\b/i],
+    ["条件句", /\bif\b.+\b(?:would|could|will|can)\b/i],
+    ["强调结构", /\bit is\b.+\bthat\b/i],
+    ["定语从句", /,\s*(?:which|who)\b/i],
+  ];
+  const sentences = splitEnglishSentences(modelText);
+  const patterns = patternDefs
+    .map(([label, pattern]) => {
+      const sentence = sentences.find((item) => pattern.test(item));
+      return sentence ? { label, sentence } : null;
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+  return { vocabulary, phrases, patterns };
+}
+
+function extractEnglishWords(text) {
+  return String(text || "").match(/[A-Za-z]+(?:['’-][A-Za-z]+)?/g) || [];
+}
+
+function countEnglishWords(text) {
+  return extractEnglishWords(text).length;
+}
+
+function splitEnglishSentences(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .filter(Boolean);
+}
+
+function highlightEnglishText(text, terms) {
+  const uniqueTerms = [...new Set(terms.filter(Boolean))].sort((a, b) => b.length - a.length);
+  if (!uniqueTerms.length) return escapeHtml(text);
+  const pattern = new RegExp(
+    `\\b(${uniqueTerms.map((term) => escapeRegExp(term)).join("|")})\\b`,
+    "gi",
+  );
+  return String(text)
+    .split(pattern)
+    .map((part) =>
+      uniqueTerms.some((term) => term.toLowerCase() === part.toLowerCase())
+        ? `<mark>${escapeHtml(part)}</mark>`
+        : escapeHtml(part),
+    )
+    .join("");
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function numberedSteps(steps) {
@@ -1261,47 +1566,6 @@ function textareaField(path, label, value, tall) {
   `;
 }
 
-function checkboxGroup(path, label, options, selected) {
-  return `
-    <fieldset class="field full">
-      <legend>${escapeHtml(label)}</legend>
-      <div class="inline-options">
-        ${options
-          .map(
-            (option) => `
-              <label class="check-row">
-                <input type="checkbox" data-array-field="${escapeAttr(path)}" value="${escapeAttr(option)}" ${
-                  selected.includes(option) ? "checked" : ""
-                } />
-                <span>${escapeHtml(option)}</span>
-              </label>
-            `,
-          )
-          .join("")}
-      </div>
-    </fieldset>
-  `;
-}
-
-function checkRows(path, options, selected) {
-  return `
-    <div class="inline-options">
-      ${options
-        .map(
-          (option) => `
-            <label class="check-row">
-              <input type="checkbox" data-array-field="${escapeAttr(path)}" value="${escapeAttr(option)}" ${
-                selected.includes(option) ? "checked" : ""
-              } />
-              <span>${escapeHtml(option)}</span>
-            </label>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
 document.addEventListener("click", (event) => {
   const openLibraryButton = event.target.closest("[data-open-library]");
   if (openLibraryButton) {
@@ -1311,6 +1575,33 @@ document.addEventListener("click", (event) => {
 
   if (event.target.closest("[data-close-library]")) {
     closeLibrary();
+    return;
+  }
+
+  if (event.target.closest("[data-back-writing-archive]")) {
+    activeLibrary = "writing";
+    editingWritingCycleId = null;
+    comparisonCycleId = null;
+    renderOverlay();
+    return;
+  }
+
+  const editWritingCycleButton = event.target.closest("[data-edit-writing-cycle]");
+  if (editWritingCycleButton) {
+    openWritingCycle(Number(editWritingCycleButton.dataset.editWritingCycle));
+    return;
+  }
+
+  const comparisonButton = event.target.closest("[data-open-writing-comparison]");
+  if (comparisonButton) {
+    openWritingComparison(Number(comparisonButton.dataset.openWritingComparison));
+    return;
+  }
+
+  const vocabularyFilterButton = event.target.closest("[data-vocabulary-filter]");
+  if (vocabularyFilterButton) {
+    vocabularyFilter = vocabularyFilterButton.dataset.vocabularyFilter;
+    renderOverlay();
     return;
   }
 
@@ -1381,22 +1672,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const addExpression = event.target.closest("[data-add-expression]");
-  if (addExpression) {
-    currentCycleRecord().speaking.expressions.push(blankExpression());
-    saveState();
-    render();
-    return;
-  }
-
-  const removeExpression = event.target.closest("[data-remove-expression]");
-  if (removeExpression) {
-    const expressions = currentCycleRecord().speaking.expressions;
-    expressions.splice(Number(removeExpression.dataset.removeExpression), 1);
-    if (!expressions.length) expressions.push(blankExpression());
-    saveState();
-    render();
-  }
 });
 
 document.addEventListener("keydown", (event) => {
@@ -1412,20 +1687,15 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (handleHistoryWritingField(event.target)) return;
   if (handleVocabularyDraft(event.target)) return;
   if (handleStandardField(event.target)) return;
-  if (handleExpressionField(event.target)) return;
 });
 
 document.addEventListener("change", (event) => {
-  if (event.target?.dataset?.writingFile !== undefined) {
-    void uploadWritingFile(event.target);
-    return;
-  }
+  if (handleHistoryWritingField(event.target)) return;
   if (handleStandardField(event.target)) return;
-  if (handleArrayField(event.target)) return;
   if (handleSpeakingStep(event.target)) return;
-  if (handleExpressionField(event.target)) return;
   if (handleSpeakingMaterial(event.target)) return;
   if (handleAudioSpeed(event.target)) return;
   if (handleAudioLoop(event.target)) return;
@@ -1435,11 +1705,11 @@ document.addEventListener("change", (event) => {
 document.addEventListener("submit", (event) => {
   if (!event.target.matches("[data-vocabulary-form]")) return;
   event.preventDefault();
-  addVocabularyItem();
+  addVocabularyItem(event.target.dataset.vocabularyForm);
 });
 
 dom.reset.addEventListener("click", () => {
-  const confirmed = window.confirm("确认重置学习进度？听力生词本和写作档案会保留。");
+  const confirmed = window.confirm("确认重置学习进度？统一生词本和写作档案会保留。");
   if (!confirmed) return;
   const vocabularyBook = state.vocabularyBook;
   const writingArchive = state.writingArchive;
@@ -1454,7 +1724,7 @@ dom.reset.addEventListener("click", () => {
 window.addEventListener("resize", resizeTallTextareas);
 
 function openLibrary(kind) {
-  if (!["speaking", "writing"].includes(kind)) return;
+  if (!["speaking", "writing", "vocabulary"].includes(kind)) return;
   activeLibrary = kind;
   if (kind === "speaking") {
     selectedLibraryMaterialId = currentCycleRecord().speaking.materialId || 1;
@@ -1465,8 +1735,25 @@ function openLibrary(kind) {
   });
 }
 
+function openWritingCycle(cycleId) {
+  editingWritingCycleId = Math.max(1, Number(cycleId) || 1);
+  comparisonCycleId = null;
+  activeLibrary = "writing-cycle";
+  ensureCycleRecordFor(editingWritingCycleId);
+  renderOverlay();
+}
+
+function openWritingComparison(cycleId) {
+  comparisonCycleId = Math.max(1, Number(cycleId) || 1);
+  editingWritingCycleId = null;
+  activeLibrary = "comparison";
+  renderOverlay();
+}
+
 function closeLibrary() {
   activeLibrary = null;
+  editingWritingCycleId = null;
+  comparisonCycleId = null;
   renderOverlay();
 }
 
@@ -1492,26 +1779,39 @@ function handleStandardField(target) {
   setPath(currentCycleRecord(), target.dataset.field, target.value);
   if (target.matches("textarea.tall")) resizeTextarea(target);
   saveState();
+  if (["writing.essayText", "writing.modelText"].includes(target.dataset.field)) {
+    renderTasks();
+    const comparisonButton = document.querySelector(
+      `[data-open-writing-comparison="${state.cycleId}"]`,
+    );
+    if (comparisonButton) comparisonButton.disabled = !writingTextsReady();
+  }
   return true;
 }
 
 function handleVocabularyDraft(target) {
-  if (!target?.dataset || target.dataset.vocabularyDraft === undefined) return false;
-  currentCycleRecord().listening.vocabularyDraft[target.dataset.vocabularyDraft] = target.value;
+  const subject = target?.dataset?.vocabularySubject;
+  const field = target?.dataset?.vocabularyField;
+  if (!subject || !field || !currentCycleRecord().vocabularyDrafts[subject]) return false;
+  currentCycleRecord().vocabularyDrafts[subject][field] = target.value;
   saveState();
   return true;
 }
 
-function handleArrayField(target) {
-  if (!target?.dataset?.arrayField) return false;
-  const record = currentCycleRecord();
-  const path = target.dataset.arrayField;
-  const current = getPath(record, path) || [];
-  const next = target.checked
-    ? Array.from(new Set([...current, target.value]))
-    : current.filter((item) => item !== target.value);
-  setPath(record, path, next);
+function handleHistoryWritingField(target) {
+  const field = target?.dataset?.historyWritingField;
+  const cycleId = Number(target?.dataset?.historyWritingCycle);
+  if (!field || !cycleId) return false;
+  const writing = ensureCycleRecordFor(cycleId).writing;
+  writing[field] = target.value;
+  syncWritingArchiveForCycle(cycleId);
   saveState();
+  if (["essayText", "modelText"].includes(field)) {
+    const comparisonButton = document.querySelector(
+      `[data-open-writing-comparison="${cycleId}"]`,
+    );
+    if (comparisonButton) comparisonButton.disabled = !writingTextsReady(writing);
+  }
   return true;
 }
 
@@ -1520,17 +1820,6 @@ function handleSpeakingStep(target) {
   const index = Number(target.dataset.speakingStep);
   currentCycleRecord().speaking.steps[index] = target.checked;
   saveState();
-  return true;
-}
-
-function handleExpressionField(target) {
-  if (!target?.dataset?.expressionField) return false;
-  const [indexText, key] = target.dataset.expressionField.split(".");
-  const expression = currentCycleRecord().speaking.expressions[Number(indexText)];
-  if (expression && key) {
-    expression[key] = target.value;
-    saveState();
-  }
   return true;
 }
 
@@ -1549,74 +1838,6 @@ function handleSpeakingMaterial(target) {
   saveState();
   render();
   return true;
-}
-
-async function uploadWritingFile(target) {
-  resetWritingUploadStatusForCycle();
-  const kind = target.dataset.writingFile;
-  const file = target.files?.[0];
-  target.value = "";
-  if (!file || !["essay", "model"].includes(kind)) return;
-  if (!cloudClient) {
-    writingUploadStatus[kind] = "云端尚未连接，请稍后重试。";
-    render();
-    return;
-  }
-  if (file.size > MAX_WRITING_FILE_SIZE) {
-    writingUploadStatus[kind] = "文件超过 20 MB，请压缩后重试。";
-    render();
-    return;
-  }
-
-  writingUploadStatus[kind] = `正在上传 ${file.name}…`;
-  render();
-
-  try {
-    const previousAttachment = currentCycleRecord().writing.attachments[kind];
-    const safeName = sanitizeFileName(file.name);
-    const uniqueId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const path = `cycle-${state.cycleId}/${kind}/${uniqueId}-${safeName}`;
-    const { error } = await cloudClient.storage.from(WRITING_BUCKET).upload(path, file, {
-      cacheControl: "3600",
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-    if (error) throw error;
-
-    const { data } = cloudClient.storage.from(WRITING_BUCKET).getPublicUrl(path);
-    currentCycleRecord().writing.attachments[kind] = {
-      name: file.name,
-      path,
-      url: data.publicUrl,
-      size: file.size,
-      type: file.type || "application/octet-stream",
-      uploadedAt: new Date().toISOString(),
-    };
-    writingUploadStatus[kind] = "上传完成，已加入云端同步。";
-    saveState();
-    render();
-    if (previousAttachment?.path && previousAttachment.path !== path) {
-      void cloudClient.storage
-        .from(WRITING_BUCKET)
-        .remove([previousAttachment.path])
-        .then(({ error: removeError }) => {
-          if (removeError) console.warn("Old writing file cleanup failed", removeError);
-        });
-    }
-  } catch (error) {
-    console.error("Writing file upload error", error);
-    writingUploadStatus[kind] = "上传失败，请检查网络或稍后重试。";
-    render();
-  }
-}
-
-function sanitizeFileName(name) {
-  const safe = String(name || "document")
-    .normalize("NFKD")
-    .replace(/[^\w.\-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return (safe || "document").slice(-120);
 }
 
 function handleAudioSpeed(target) {
@@ -1642,25 +1863,41 @@ function handleSentenceLoop(target) {
   return true;
 }
 
-function addVocabularyItem() {
-  const listening = currentCycleRecord().listening;
-  const draft = listening.vocabularyDraft;
+function addVocabularyItem(subject) {
+  if (!taskNameByKey[subject]) return;
+  const record = currentCycleRecord();
+  const draft = record.vocabularyDrafts[subject];
   const word = draft.word.trim();
   const meaning = draft.meaning.trim();
   if (!word || !meaning) return;
 
   state.vocabularyBook.push({
     id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    subject,
+    subjectName: taskNameByKey[subject],
+    cycleId: state.cycleId,
     word,
     meaning,
     context: draft.context.trim(),
-    materialName: listening.materialName.trim(),
-    sectionType: listening.sectionType,
+    source: draft.source.trim() || suggestedVocabularySource(subject, record),
     addedAt: new Date().toISOString(),
   });
-  listening.vocabularyDraft = { word: "", meaning: "", context: "" };
+  record.vocabularyDrafts[subject] = {
+    word: "",
+    meaning: "",
+    context: "",
+    source: "",
+  };
   saveState();
   render();
+}
+
+function suggestedVocabularySource(subject, record) {
+  if (subject === "speaking") return record.speaking.materialName || "";
+  if (subject === "writing") return record.writing.topic || "";
+  if (subject === "listening") return record.listening.materialName || "";
+  if (subject === "reading") return record.reading.materialName || "";
+  return "";
 }
 
 function removeVocabularyItem(id) {
@@ -1674,13 +1911,14 @@ function removeVocabularyItem(id) {
 function exportVocabularyCsv() {
   if (!state.vocabularyBook.length) return;
   const rows = [
-    ["日期", "生词/短语", "中文释义", "来源材料", "Section", "原句/语境"],
+    ["日期", "科目", "循环", "生词/短语", "中文释义", "来源", "原句/语境"],
     ...state.vocabularyBook.map((item) => [
       formatVocabularyDate(item.addedAt),
+      item.subjectName || taskNameByKey[item.subject] || "",
+      item.cycleId || "",
       item.word,
       item.meaning,
-      item.materialName || "",
-      item.sectionType || "",
+      item.source || "",
       item.context || "",
     ]),
   ];
@@ -1688,7 +1926,7 @@ function exportVocabularyCsv() {
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `雅思听力生词本-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `雅思统一生词本-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -1715,13 +1953,6 @@ function formatArchiveDate(value) {
     month: "2-digit",
     day: "2-digit",
   });
-}
-
-function formatFileSize(bytes) {
-  const size = Number(bytes) || 0;
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function syncAudioSettings() {
@@ -1848,11 +2079,12 @@ function resizeTextarea(textarea) {
 function completeTask(taskId) {
   const key = taskKeyById[taskId];
   if (!key || taskId !== state.currentTask || state.tasks[key] !== "in_progress") return;
-  if (taskId === 4 && !writingFilesReady()) {
-    window.alert("请先上传“我的作文”和“范文”，再完成写作任务。");
+  if (taskId === 4 && !writingTextsReady()) {
+    window.alert("请先粘贴“我的作文”和“范文”，再完成写作任务。");
     return;
   }
 
+  const completedWritingCycleId = taskId === 4 ? state.cycleId : null;
   if (taskId === 4) archiveCurrentWriting();
 
   state.tasks[key] = "completed";
@@ -1877,37 +2109,51 @@ function completeTask(taskId) {
     ensureCycleRecord();
   }
 
+  if (completedWritingCycleId) {
+    comparisonCycleId = completedWritingCycleId;
+    editingWritingCycleId = null;
+    activeLibrary = "comparison";
+  }
   saveState();
   render();
 }
 
 function archiveCurrentWriting() {
-  const writing = currentCycleRecord().writing;
+  syncWritingArchiveForCycle(state.cycleId, new Date().toISOString());
+}
+
+function syncWritingArchiveForCycle(cycleId, completedAt) {
+  const normalizedCycleId = Math.max(1, Number(cycleId) || 1);
+  const writing = ensureCycleRecordFor(normalizedCycleId).writing;
+  const id = `cycle-${normalizedCycleId}`;
+  const existingIndex = state.writingArchive.findIndex((item) => item.id === id);
+  const existing = existingIndex >= 0 ? state.writingArchive[existingIndex] : null;
+  const completionEvent = state.completedEvents.find(
+    (event) => event.taskId === 4 && Number(event.cycleId) === normalizedCycleId,
+  );
   const now = new Date().toISOString();
   const entry = {
-    id: `cycle-${state.cycleId}`,
-    cycleId: state.cycleId,
+    id,
+    cycleId: normalizedCycleId,
     writingType: writing.writingType,
     topic: writing.topic,
     timed: writing.timed,
     wordCount: writing.wordCount,
     mainProblem: writing.mainProblem,
-    task1Checks: [...(writing.task1Checks || [])],
-    task2Checks: [...(writing.task2Checks || [])],
-    attachments: JSON.parse(JSON.stringify(writing.attachments)),
-    completedAt: now,
+    essayText: writing.essayText || "",
+    modelText: writing.modelText || "",
+    legacyAttachments: existing?.legacyAttachments || writing.attachments || null,
+    completedAt: completedAt || existing?.completedAt || completionEvent?.at || now,
     updatedAt: now,
   };
-  const existingIndex = state.writingArchive.findIndex((item) => item.id === entry.id);
   if (existingIndex >= 0) {
     state.writingArchive[existingIndex] = entry;
   } else {
     state.writingArchive.push(entry);
   }
-}
-
-function getPath(object, path) {
-  return path.split(".").reduce((acc, key) => (acc ? acc[key] : undefined), object);
+  state.writingArchive.sort(
+    (a, b) => stateTime(a.completedAt || a.updatedAt) - stateTime(b.completedAt || b.updatedAt),
+  );
 }
 
 function setPath(object, path, value) {
