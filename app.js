@@ -3,6 +3,8 @@ import { createCloudClient } from "./cloud.js";
 const XDF_URL = "https://ieltscat.xdf.cn/";
 const STORAGE_KEY = "ielts-study-panel-state-v1";
 const SHARED_STATE_ID = "primary";
+const WRITING_BUCKET = "ielts-writing-files";
+const MAX_WRITING_FILE_SIZE = 20 * 1024 * 1024;
 
 const taskDefs = [
   {
@@ -104,6 +106,13 @@ let cloudSaveTimer = null;
 let cloudStatus = "connecting";
 let cloudMessage = "";
 let cloudLastSynced = null;
+let activeLibrary = null;
+let selectedLibraryMaterialId = 1;
+let writingUploadStatus = {
+  essay: "",
+  model: "",
+};
+let writingUploadStatusCycleId = state.cycleId;
 
 const dom = {
   today: document.querySelector("#todayText"),
@@ -115,6 +124,7 @@ const dom = {
   taskList: document.querySelector("#taskList"),
   taskDetail: document.querySelector("#taskDetail"),
   cloud: document.querySelector("#cloudSyncPanel"),
+  overlay: document.querySelector("#appOverlay"),
   reset: document.querySelector("#resetProgress"),
 };
 
@@ -139,6 +149,7 @@ function defaultState() {
     records: {},
     completedEvents: [],
     vocabularyBook: [],
+    writingArchive: [],
     updatedAt: new Date().toISOString(),
   };
 }
@@ -202,6 +213,10 @@ function initialCycleRecord(cycleId) {
       mainProblem: "",
       task1Checks: [],
       task2Checks: [],
+      attachments: {
+        essay: null,
+        model: null,
+      },
     },
   };
 }
@@ -282,14 +297,22 @@ async function syncFromCloud() {
     const remoteTime = stateTime(remoteState.updatedAt || data.updated_at);
     const preferRemote = !hasLocalState || remoteTime > localTime;
     const mergedVocabulary = mergeVocabularyBooks(state.vocabularyBook, remoteState.vocabularyBook);
+    const mergedWritingArchive = mergeWritingArchives(
+      state.writingArchive,
+      remoteState.writingArchive,
+    );
     const remoteVocabularyCount = Array.isArray(remoteState.vocabularyBook)
       ? remoteState.vocabularyBook.length
+      : 0;
+    const remoteWritingArchiveCount = Array.isArray(remoteState.writingArchive)
+      ? remoteState.writingArchive.length
       : 0;
 
     state = {
       ...defaultState(),
       ...(preferRemote ? remoteState : state),
       vocabularyBook: mergedVocabulary,
+      writingArchive: mergedWritingArchive,
     };
     const stateBeforeNormalization = JSON.stringify(state);
     ensureState();
@@ -300,7 +323,12 @@ async function syncFromCloud() {
 
     cloudReady = true;
     cloudHydrating = false;
-    if (!preferRemote || stateWasNormalized || mergedVocabulary.length !== remoteVocabularyCount) {
+    if (
+      !preferRemote ||
+      stateWasNormalized ||
+      mergedVocabulary.length !== remoteVocabularyCount ||
+      mergedWritingArchive.length !== remoteWritingArchiveCount
+    ) {
       state.updatedAt = new Date().toISOString();
       saveLocalState();
       await pushCloudState();
@@ -364,6 +392,20 @@ function mergeVocabularyBooks(localBook, remoteBook) {
   return [...entries.values()].sort((a, b) => stateTime(a.addedAt) - stateTime(b.addedAt));
 }
 
+function mergeWritingArchives(localArchive, remoteArchive) {
+  const entries = new Map();
+  [...(remoteArchive || []), ...(localArchive || [])].forEach((item) => {
+    const key = item.id || `cycle-${item.cycleId || ""}`;
+    const current = entries.get(key);
+    if (!current || stateTime(item.updatedAt || item.completedAt) >= stateTime(current.updatedAt || current.completedAt)) {
+      entries.set(key, item);
+    }
+  });
+  return [...entries.values()].sort(
+    (a, b) => stateTime(a.completedAt || a.updatedAt) - stateTime(b.completedAt || b.updatedAt),
+  );
+}
+
 function stateTime(value) {
   const time = new Date(value || 0).getTime();
   return Number.isFinite(time) ? time : 0;
@@ -394,7 +436,7 @@ function renderCloudPanel() {
         : "local";
   const syncedText = cloudLastSynced
     ? `最近同步 ${cloudLastSynced.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`
-    : "学习记录与生词本会自动跨设备保存";
+    : "学习记录、生词本和写作档案会自动跨设备保存";
   dom.cloud.innerHTML = `
     <div class="cloud-layout">
       <div class="cloud-copy">
@@ -413,11 +455,43 @@ function ensureState() {
   if (!state.records || typeof state.records !== "object") state.records = {};
   if (!state.completedEvents || !Array.isArray(state.completedEvents)) state.completedEvents = [];
   if (!state.vocabularyBook || !Array.isArray(state.vocabularyBook)) state.vocabularyBook = [];
+  if (!state.writingArchive || !Array.isArray(state.writingArchive)) state.writingArchive = [];
+  hydrateWritingArchiveFromHistory();
   if (!state.tasks) state.tasks = initialTasks();
   if (!state.currentTask) state.currentTask = 1;
   if (!state.cycleId) state.cycleId = 1;
   if (!state.updatedAt) state.updatedAt = new Date().toISOString();
   ensureCycleRecord();
+}
+
+function hydrateWritingArchiveFromHistory() {
+  const archivedCycles = new Set(state.writingArchive.map((item) => String(item.cycleId)));
+  state.completedEvents
+    .filter((event) => event.taskId === 4 && !archivedCycles.has(String(event.cycleId)))
+    .forEach((event) => {
+      const writing = state.records?.[String(event.cycleId)]?.writing || {};
+      state.writingArchive.push({
+        id: `cycle-${event.cycleId}`,
+        cycleId: event.cycleId,
+        writingType: writing.writingType || "",
+        topic: writing.topic || "",
+        timed: writing.timed || "",
+        wordCount: writing.wordCount || "",
+        mainProblem: writing.mainProblem || "",
+        task1Checks: [...(writing.task1Checks || [])],
+        task2Checks: [...(writing.task2Checks || [])],
+        attachments: {
+          essay: writing.attachments?.essay || null,
+          model: writing.attachments?.model || null,
+        },
+        completedAt: event.at,
+        updatedAt: event.at,
+      });
+      archivedCycles.add(String(event.cycleId));
+    });
+  state.writingArchive.sort(
+    (a, b) => stateTime(a.completedAt || a.updatedAt) - stateTime(b.completedAt || b.updatedAt),
+  );
 }
 
 function ensureCycleRecord() {
@@ -440,6 +514,11 @@ function ensureCycleRecord() {
   hydrateSpeakingDefaults(record.speaking, state.cycleId);
   if (!record.writing) record.writing = initialCycleRecord(state.cycleId).writing;
   if (!record.writing.writingType) record.writing.writingType = recommendedWritingType(state.cycleId);
+  if (!record.writing.attachments || typeof record.writing.attachments !== "object") {
+    record.writing.attachments = { essay: null, model: null };
+  }
+  if (!("essay" in record.writing.attachments)) record.writing.attachments.essay = null;
+  if (!("model" in record.writing.attachments)) record.writing.attachments.model = null;
   return record;
 }
 
@@ -478,6 +557,17 @@ function findMaterial(id) {
   return speakingMaterials.find((material) => String(material.id) === String(id));
 }
 
+function writingFilesReady(writing = currentCycleRecord().writing) {
+  return Boolean(writing.attachments?.essay && writing.attachments?.model);
+}
+
+function taskCanComplete(taskId) {
+  if (taskId !== state.currentTask || state.tasks[taskKeyById[taskId]] !== "in_progress") {
+    return false;
+  }
+  return taskId !== 4 || writingFilesReady();
+}
+
 function render() {
   stopSentenceMonitor();
   activeSentenceIndex = null;
@@ -485,6 +575,7 @@ function render() {
   renderTasks();
   renderDetail();
   renderCloudPanel();
+  renderOverlay();
   syncAudioSettings();
   resizeTallTextareas();
 }
@@ -533,6 +624,8 @@ function renderTasks() {
       const completed = status === "completed" ? "is-completed" : "";
       const isCurrent = state.currentTask === task.id;
       const isCompleted = status === "completed";
+      const canComplete = taskCanComplete(task.id);
+      const waitingForFiles = task.id === 4 && isCurrent && !writingFilesReady();
       return `
         <article class="task-card ${selected} ${current} ${completed}" data-select-task="${task.id}" tabindex="0">
           <div class="task-card-header">
@@ -545,8 +638,8 @@ function renderTasks() {
           </div>
           <div class="task-footer">
             <span class="duration">${escapeHtml(task.duration)}</span>
-            <button class="mini-button" type="button" data-complete-task="${task.id}" ${isCurrent ? "" : "disabled"}>
-              ${isCompleted ? "已完成" : isCurrent ? "完成" : "等待"}
+            <button class="mini-button" type="button" data-complete-task="${task.id}" ${canComplete ? "" : "disabled"}>
+              ${isCompleted ? "已完成" : waitingForFiles ? "待上传" : isCurrent ? "完成" : "等待"}
             </button>
           </div>
         </article>
@@ -558,7 +651,7 @@ function renderTasks() {
 function renderDetail() {
   const task = selectedTaskDef();
   const status = state.tasks[task.key] || "not_started";
-  const canComplete = state.currentTask === task.id && status === "in_progress";
+  const canComplete = taskCanComplete(task.id);
   const locked = state.currentTask !== task.id && status !== "completed";
   const external = xdfTasks.has(task.id) ? renderXdfCallout() : "";
   const body = {
@@ -582,13 +675,21 @@ function renderDetail() {
       ${external}
       ${body}
       <div class="detail-actions">
-        <p class="note">${status === "completed" ? "这个任务已在当前循环完成。" : "完成后会自动进入下一项任务。"}</p>
+        <p class="note">${completionNote(task.id, status)}</p>
         <button class="solid-button" type="button" data-complete-task="${task.id}" ${canComplete ? "" : "disabled"}>
           完成${escapeHtml(task.name)}任务
         </button>
       </div>
     </div>
   `;
+}
+
+function completionNote(taskId, status) {
+  if (status === "completed") return "这个任务已在当前循环完成。";
+  if (taskId === 4 && !writingFilesReady()) {
+    return "上传“我的作文”和“范文”后，才能完成并自动归档本次写作。";
+  }
+  return "完成后会自动进入下一项任务。";
 }
 
 function renderXdfCallout() {
@@ -886,6 +987,7 @@ function renderReading() {
 }
 
 function renderWriting() {
+  resetWritingUploadStatusForCycle();
   const rec = currentCycleRecord().writing;
   return `
     <section class="section-block">
@@ -914,6 +1016,24 @@ function renderWriting() {
       </div>
     </section>
     <section class="section-block">
+      <div class="section-heading-row">
+        <div>
+          <h3>上传写作版本</h3>
+          <p class="note">两个文件都会保存到云端，并在完成任务时进入写作档案。</p>
+        </div>
+        <button class="quiet-button" type="button" data-open-library="writing">
+          查看写作档案（${state.writingArchive.length}）
+        </button>
+      </div>
+      <div class="writing-upload-grid">
+        ${renderWritingUploadSlot("essay", "我的作文", rec.attachments.essay)}
+        ${renderWritingUploadSlot("model", "范文", rec.attachments.model)}
+      </div>
+      <p class="note upload-privacy-note">
+        支持 PDF、Word、Pages、RTF、TXT、Markdown 和常见图片，单个文件不超过 20 MB。
+      </p>
+    </section>
+    <section class="section-block">
       <h3>Task 1 自查</h3>
       ${checkRows("writing.task1Checks", task1Checks, rec.task1Checks)}
     </section>
@@ -921,6 +1041,182 @@ function renderWriting() {
       <h3>Task 2 自查</h3>
       ${checkRows("writing.task2Checks", task2Checks, rec.task2Checks)}
     </section>
+  `;
+}
+
+function resetWritingUploadStatusForCycle() {
+  if (writingUploadStatusCycleId === state.cycleId) return;
+  writingUploadStatusCycleId = state.cycleId;
+  writingUploadStatus = { essay: "", model: "" };
+}
+
+function renderWritingUploadSlot(kind, label, attachment) {
+  const status = writingUploadStatus[kind];
+  const inputId = `writing-file-${kind}`;
+  return `
+    <article class="writing-upload-card ${attachment ? "has-file" : ""}">
+      <div class="writing-upload-heading">
+        <span class="upload-kind">${escapeHtml(label)}</span>
+        <span class="upload-state">${attachment ? "已同步" : "未上传"}</span>
+      </div>
+      ${
+        attachment
+          ? `<a class="writing-file-link" href="${escapeAttr(attachment.url)}" target="_blank" rel="noreferrer">
+              <strong>${escapeHtml(attachment.name)}</strong>
+              <span>${escapeHtml(formatFileSize(attachment.size))} · ${escapeHtml(formatArchiveDate(attachment.uploadedAt))}</span>
+            </a>`
+          : `<p>选择文件后会立即上传并保存到当前循环。</p>`
+      }
+      ${status ? `<p class="upload-status">${escapeHtml(status)}</p>` : ""}
+      <label class="quiet-button writing-file-picker" for="${inputId}">
+        ${attachment ? "替换文件" : `上传${escapeHtml(label)}`}
+      </label>
+      <input
+        class="visually-hidden"
+        id="${inputId}"
+        type="file"
+        data-writing-file="${kind}"
+        accept=".pdf,.doc,.docx,.pages,.rtf,.txt,.md,.markdown,.jpg,.jpeg,.png,.webp"
+        ${cloudClient ? "" : "disabled"}
+      />
+    </article>
+  `;
+}
+
+function renderOverlay() {
+  if (!dom.overlay) return;
+  if (!activeLibrary) {
+    dom.overlay.classList.add("hidden");
+    dom.overlay.innerHTML = "";
+    document.body.classList.remove("overlay-open");
+    return;
+  }
+
+  dom.overlay.classList.remove("hidden");
+  document.body.classList.add("overlay-open");
+  dom.overlay.innerHTML = `
+    <div class="overlay-backdrop" data-close-library></div>
+    <section class="library-dialog" role="dialog" aria-modal="true" aria-label="${activeLibrary === "speaking" ? "口语材料库" : "写作档案"}">
+      <header class="library-header">
+        <div>
+          <p class="eyebrow">${activeLibrary === "speaking" ? "SPEAKING LIBRARY" : "WRITING ARCHIVE"}</p>
+          <h2>${activeLibrary === "speaking" ? "口语材料库" : "写作档案"}</h2>
+          <p>${activeLibrary === "speaking" ? "18 篇短文、音频和重点表达集中浏览。" : `已归档 ${state.writingArchive.length} 次写作记录。`}</p>
+        </div>
+        <button class="overlay-close" type="button" data-close-library aria-label="关闭资料库">×</button>
+      </header>
+      <div class="library-body">
+        ${activeLibrary === "speaking" ? renderSpeakingLibrary() : renderWritingArchive()}
+      </div>
+    </section>
+  `;
+}
+
+function renderSpeakingLibrary() {
+  const material = findMaterial(selectedLibraryMaterialId) || speakingMaterials[0];
+  if (!material) return `<p class="empty-state">口语材料暂时不可用。</p>`;
+  return `
+    <div class="speaking-library-layout">
+      <nav class="speaking-library-list" aria-label="18 篇口语材料">
+        ${speakingMaterials
+          .map(
+            (item) => `
+              <button
+                class="library-list-item ${String(item.id) === String(material.id) ? "is-active" : ""}"
+                type="button"
+                data-library-material="${item.id}"
+              >
+                <span>${String(item.id).padStart(2, "0")}</span>
+                <strong>${escapeHtml(item.title)}</strong>
+              </button>
+            `,
+          )
+          .join("")}
+      </nav>
+      <article class="speaking-library-detail">
+        <div class="library-detail-title">
+          <div>
+            <p class="eyebrow">MATERIAL ${String(material.id).padStart(2, "0")}</p>
+            <h3>${escapeHtml(material.displayTitle)}</h3>
+          </div>
+          <button class="solid-button" type="button" data-use-library-material="${material.id}">
+            设为当前循环材料
+          </button>
+        </div>
+        <audio controls preload="metadata" src="${escapeAttr(material.audio)}"></audio>
+        <section class="library-content-section">
+          <h4>背诵短文</h4>
+          <div class="passage-card">${escapeHtml(material.passage)}</div>
+        </section>
+        <section class="library-content-section">
+          <h4>必背表达</h4>
+          <div class="chip-list">
+            ${(material.expressions || []).map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("")}
+          </div>
+        </section>
+        <section class="library-content-section">
+          <h4>替换练习</h4>
+          <ul class="material-list">
+            ${(material.replacements || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+          </ul>
+        </section>
+      </article>
+    </div>
+  `;
+}
+
+function renderWritingArchive() {
+  if (!state.writingArchive.length) {
+    return `
+      <div class="empty-state archive-empty">
+        <strong>还没有写作档案</strong>
+        <span>在写作任务中上传“我的作文”和“范文”，完成任务后会自动出现在这里。</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="writing-archive-list">
+      ${[...state.writingArchive]
+        .reverse()
+        .map(renderWritingArchiveEntry)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderWritingArchiveEntry(entry) {
+  return `
+    <article class="writing-archive-card">
+      <div class="archive-card-heading">
+        <div>
+          <span>第 ${escapeHtml(entry.cycleId)} 个循环 · ${escapeHtml(entry.writingType || "未标记类型")}</span>
+          <h3>${escapeHtml(entry.topic || "未填写写作题目")}</h3>
+        </div>
+        <time>${escapeHtml(formatArchiveDate(entry.completedAt))}</time>
+      </div>
+      <div class="archive-meta">
+        <span>${entry.timed === "是" ? "限时完成" : "未限时"}</span>
+        <span>${entry.wordCount ? `${escapeHtml(entry.wordCount)} 词` : "未记录字数"}</span>
+      </div>
+      ${entry.mainProblem ? `<p class="archive-problem"><strong>本次最大问题：</strong>${escapeHtml(entry.mainProblem)}</p>` : ""}
+      <div class="archive-files">
+        ${renderArchivedFile("我的作文", entry.attachments?.essay)}
+        ${renderArchivedFile("范文", entry.attachments?.model)}
+      </div>
+    </article>
+  `;
+}
+
+function renderArchivedFile(label, attachment) {
+  if (!attachment) {
+    return `<span class="archive-file missing"><strong>${escapeHtml(label)}</strong><span>旧记录未上传</span></span>`;
+  }
+  return `
+    <a class="archive-file" href="${escapeAttr(attachment.url)}" target="_blank" rel="noreferrer">
+      <strong>${escapeHtml(label)}</strong>
+      <span>${escapeHtml(attachment.name)} · ${escapeHtml(formatFileSize(attachment.size))}</span>
+    </a>
   `;
 }
 
@@ -1007,6 +1303,30 @@ function checkRows(path, options, selected) {
 }
 
 document.addEventListener("click", (event) => {
+  const openLibraryButton = event.target.closest("[data-open-library]");
+  if (openLibraryButton) {
+    openLibrary(openLibraryButton.dataset.openLibrary);
+    return;
+  }
+
+  if (event.target.closest("[data-close-library]")) {
+    closeLibrary();
+    return;
+  }
+
+  const libraryMaterialButton = event.target.closest("[data-library-material]");
+  if (libraryMaterialButton) {
+    selectedLibraryMaterialId = Number(libraryMaterialButton.dataset.libraryMaterial);
+    renderOverlay();
+    return;
+  }
+
+  const useLibraryMaterialButton = event.target.closest("[data-use-library-material]");
+  if (useLibraryMaterialButton) {
+    useSpeakingMaterial(Number(useLibraryMaterialButton.dataset.useLibraryMaterial));
+    return;
+  }
+
   if (event.target.closest("[data-cloud-sync]")) {
     void syncFromCloud();
     return;
@@ -1080,6 +1400,10 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && activeLibrary) {
+    closeLibrary();
+    return;
+  }
   const taskCard = event.target.closest("[data-select-task]");
   if (!taskCard || (event.key !== "Enter" && event.key !== " ")) return;
   event.preventDefault();
@@ -1094,6 +1418,10 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target?.dataset?.writingFile !== undefined) {
+    void uploadWritingFile(event.target);
+    return;
+  }
   if (handleStandardField(event.target)) return;
   if (handleArrayField(event.target)) return;
   if (handleSpeakingStep(event.target)) return;
@@ -1111,10 +1439,11 @@ document.addEventListener("submit", (event) => {
 });
 
 dom.reset.addEventListener("click", () => {
-  const confirmed = window.confirm("确认重置学习进度？已经积累的听力生词本会保留。");
+  const confirmed = window.confirm("确认重置学习进度？听力生词本和写作档案会保留。");
   if (!confirmed) return;
   const vocabularyBook = state.vocabularyBook;
-  state = { ...defaultState(), vocabularyBook };
+  const writingArchive = state.writingArchive;
+  state = { ...defaultState(), vocabularyBook, writingArchive };
   selectedTaskId = 1;
   activeSentenceIndex = null;
   ensureState();
@@ -1123,6 +1452,40 @@ dom.reset.addEventListener("click", () => {
 });
 
 window.addEventListener("resize", resizeTallTextareas);
+
+function openLibrary(kind) {
+  if (!["speaking", "writing"].includes(kind)) return;
+  activeLibrary = kind;
+  if (kind === "speaking") {
+    selectedLibraryMaterialId = currentCycleRecord().speaking.materialId || 1;
+  }
+  renderOverlay();
+  window.requestAnimationFrame(() => {
+    document.querySelector(".overlay-close")?.focus();
+  });
+}
+
+function closeLibrary() {
+  activeLibrary = null;
+  renderOverlay();
+}
+
+function useSpeakingMaterial(materialId) {
+  const material = findMaterial(materialId);
+  if (!material) return;
+  const speaking = currentCycleRecord().speaking;
+  speaking.materialId = material.id;
+  speaking.materialManuallySelected = true;
+  speaking.materialName = material.displayTitle;
+  speaking.text = material.passage;
+  speaking.steps = Array(speakingSteps.length).fill(false);
+  speaking.localAudioName = "";
+  selectedTaskId = 2;
+  activeSentenceIndex = null;
+  activeLibrary = null;
+  saveState();
+  render();
+}
 
 function handleStandardField(target) {
   if (!target?.dataset?.field) return false;
@@ -1186,6 +1549,74 @@ function handleSpeakingMaterial(target) {
   saveState();
   render();
   return true;
+}
+
+async function uploadWritingFile(target) {
+  resetWritingUploadStatusForCycle();
+  const kind = target.dataset.writingFile;
+  const file = target.files?.[0];
+  target.value = "";
+  if (!file || !["essay", "model"].includes(kind)) return;
+  if (!cloudClient) {
+    writingUploadStatus[kind] = "云端尚未连接，请稍后重试。";
+    render();
+    return;
+  }
+  if (file.size > MAX_WRITING_FILE_SIZE) {
+    writingUploadStatus[kind] = "文件超过 20 MB，请压缩后重试。";
+    render();
+    return;
+  }
+
+  writingUploadStatus[kind] = `正在上传 ${file.name}…`;
+  render();
+
+  try {
+    const previousAttachment = currentCycleRecord().writing.attachments[kind];
+    const safeName = sanitizeFileName(file.name);
+    const uniqueId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const path = `cycle-${state.cycleId}/${kind}/${uniqueId}-${safeName}`;
+    const { error } = await cloudClient.storage.from(WRITING_BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+    if (error) throw error;
+
+    const { data } = cloudClient.storage.from(WRITING_BUCKET).getPublicUrl(path);
+    currentCycleRecord().writing.attachments[kind] = {
+      name: file.name,
+      path,
+      url: data.publicUrl,
+      size: file.size,
+      type: file.type || "application/octet-stream",
+      uploadedAt: new Date().toISOString(),
+    };
+    writingUploadStatus[kind] = "上传完成，已加入云端同步。";
+    saveState();
+    render();
+    if (previousAttachment?.path && previousAttachment.path !== path) {
+      void cloudClient.storage
+        .from(WRITING_BUCKET)
+        .remove([previousAttachment.path])
+        .then(({ error: removeError }) => {
+          if (removeError) console.warn("Old writing file cleanup failed", removeError);
+        });
+    }
+  } catch (error) {
+    console.error("Writing file upload error", error);
+    writingUploadStatus[kind] = "上传失败，请检查网络或稍后重试。";
+    render();
+  }
+}
+
+function sanitizeFileName(name) {
+  const safe = String(name || "document")
+    .normalize("NFKD")
+    .replace(/[^\w.\-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return (safe || "document").slice(-120);
 }
 
 function handleAudioSpeed(target) {
@@ -1274,6 +1705,23 @@ function formatVocabularyDate(value) {
     month: "2-digit",
     day: "2-digit",
   });
+}
+
+function formatArchiveDate(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "时间未知";
+  return date.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes) || 0;
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function syncAudioSettings() {
@@ -1400,6 +1848,12 @@ function resizeTextarea(textarea) {
 function completeTask(taskId) {
   const key = taskKeyById[taskId];
   if (!key || taskId !== state.currentTask || state.tasks[key] !== "in_progress") return;
+  if (taskId === 4 && !writingFilesReady()) {
+    window.alert("请先上传“我的作文”和“范文”，再完成写作任务。");
+    return;
+  }
+
+  if (taskId === 4) archiveCurrentWriting();
 
   state.tasks[key] = "completed";
   state.completedEvents.push({
@@ -1425,6 +1879,31 @@ function completeTask(taskId) {
 
   saveState();
   render();
+}
+
+function archiveCurrentWriting() {
+  const writing = currentCycleRecord().writing;
+  const now = new Date().toISOString();
+  const entry = {
+    id: `cycle-${state.cycleId}`,
+    cycleId: state.cycleId,
+    writingType: writing.writingType,
+    topic: writing.topic,
+    timed: writing.timed,
+    wordCount: writing.wordCount,
+    mainProblem: writing.mainProblem,
+    task1Checks: [...(writing.task1Checks || [])],
+    task2Checks: [...(writing.task2Checks || [])],
+    attachments: JSON.parse(JSON.stringify(writing.attachments)),
+    completedAt: now,
+    updatedAt: now,
+  };
+  const existingIndex = state.writingArchive.findIndex((item) => item.id === entry.id);
+  if (existingIndex >= 0) {
+    state.writingArchive[existingIndex] = entry;
+  } else {
+    state.writingArchive.push(entry);
+  }
 }
 
 function getPath(object, path) {
