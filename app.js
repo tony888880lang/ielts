@@ -153,6 +153,7 @@ function initialTasks() {
 }
 
 function initialCycleRecord(cycleId) {
+  const speakingMaterialId = recommendedSpeakingMaterialId(cycleId);
   return {
     listening: {
       materialName: "",
@@ -168,7 +169,8 @@ function initialCycleRecord(cycleId) {
       },
     },
     speaking: {
-      materialId: 1,
+      materialId: speakingMaterialId,
+      materialManuallySelected: false,
       customTopic: "",
       materialName: "",
       text: "",
@@ -216,6 +218,11 @@ function blankExpression() {
 function recommendedWritingType(cycleId) {
   const pattern = ["Task 2", "Task 1", "Task 2", "Task 1", "Task 2", "Task 2"];
   return pattern[(cycleId - 1) % pattern.length];
+}
+
+function recommendedSpeakingMaterialId(cycleId) {
+  const materialCount = speakingMaterials.length || 18;
+  return ((Math.max(1, Number(cycleId) || 1) - 1) % materialCount) + 1;
 }
 
 function loadState() {
@@ -284,14 +291,16 @@ async function syncFromCloud() {
       ...(preferRemote ? remoteState : state),
       vocabularyBook: mergedVocabulary,
     };
+    const stateBeforeNormalization = JSON.stringify(state);
     ensureState();
+    const stateWasNormalized = JSON.stringify(state) !== stateBeforeNormalization;
     selectedTaskId = state.currentTask;
     saveLocalState();
     render();
 
     cloudReady = true;
     cloudHydrating = false;
-    if (!preferRemote || mergedVocabulary.length !== remoteVocabularyCount) {
+    if (!preferRemote || stateWasNormalized || mergedVocabulary.length !== remoteVocabularyCount) {
       state.updatedAt = new Date().toISOString();
       saveLocalState();
       await pushCloudState();
@@ -425,18 +434,32 @@ function ensureCycleRecord() {
   if (!record.speaking.expressions?.length) record.speaking.expressions = [blankExpression()];
   if (!record.speaking.steps?.length) record.speaking.steps = Array(speakingSteps.length).fill(false);
   if (typeof record.speaking.sentenceLoop !== "boolean") record.speaking.sentenceLoop = true;
-  hydrateSpeakingDefaults(record.speaking);
+  if (typeof record.speaking.materialManuallySelected !== "boolean") {
+    record.speaking.materialManuallySelected = false;
+  }
+  hydrateSpeakingDefaults(record.speaking, state.cycleId);
   if (!record.writing) record.writing = initialCycleRecord(state.cycleId).writing;
   if (!record.writing.writingType) record.writing.writingType = recommendedWritingType(state.cycleId);
   return record;
 }
 
-function hydrateSpeakingDefaults(speaking) {
-  const material = findMaterial(speaking.materialId) || speakingMaterials[0];
+function hydrateSpeakingDefaults(speaking, cycleId) {
+  const firstMaterial = speakingMaterials[0];
+  const recommendedMaterial =
+    findMaterial(recommendedSpeakingMaterialId(cycleId)) || firstMaterial;
+  const usesLegacyFirstMaterial =
+    Number(cycleId) > 1 &&
+    speaking.materialManuallySelected !== true &&
+    String(speaking.materialId) === String(firstMaterial?.id) &&
+    (!speaking.materialName || speaking.materialName === firstMaterial?.displayTitle) &&
+    (!speaking.text || speaking.text === firstMaterial?.passage);
+  const material = usesLegacyFirstMaterial
+    ? recommendedMaterial
+    : findMaterial(speaking.materialId) || recommendedMaterial;
   if (!material) return;
-  if (!speaking.materialId) speaking.materialId = material.id;
-  if (!speaking.materialName) speaking.materialName = material.displayTitle;
-  if (!speaking.text) speaking.text = material.passage;
+  if (!speaking.materialId || usesLegacyFirstMaterial) speaking.materialId = material.id;
+  if (!speaking.materialName || usesLegacyFirstMaterial) speaking.materialName = material.displayTitle;
+  if (!speaking.text || usesLegacyFirstMaterial) speaking.text = material.passage;
 }
 
 function currentCycleRecord() {
@@ -1154,6 +1177,7 @@ function handleSpeakingMaterial(target) {
   if (!material) return true;
   const speaking = currentCycleRecord().speaking;
   speaking.materialId = material.id;
+  speaking.materialManuallySelected = true;
   speaking.materialName = material.displayTitle;
   speaking.text = material.passage;
   speaking.steps = Array(speakingSteps.length).fill(false);
